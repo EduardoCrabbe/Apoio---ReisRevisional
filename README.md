@@ -1,85 +1,57 @@
-# Eproc Tracker
+# Plataforma Apoio ao CS (Reis Revisional) - V5 Web
 
-**Projeto:** #ReisRevisional
-**Tags:** #Automação #RPA #Python #Selenium #Jurídico #Cloudflare
+A plataforma **Apoio ao CS** é um ecossistema completo para a gestão da equipe de Customer Success (CS) da Reis Revisional. A partir da V5, o sistema foi transformado em uma **Aplicação Web (React + FastAPI)** que une gestão de performance, relatórios financeiros em tempo real e automação nativa contra portais jurídicos (Eproc-SP).
 
-O **Eproc Tracker** é uma ferramenta de automação (RPA) desenvolvida para o Projeto Reis Revisional. Seu objetivo é acessar o portal de consultas públicas do Eproc SP e rastrear movimentações processuais, atuando como um apoio automatizado ao time de Customer Success (CS).
+## 🚀 Como Executar em um Computador Novo
 
----
-
-## 🏗 Arquitetura do Robô
-
-A arquitetura de software é dividida em duas grandes fases operacionais para lidar de forma inteligente com os dados limitados (ou abundantes) que a operação possui sobre cada cliente na `base_clientes.xlsx`:
-
-### 1. Fase de Descoberta (Discovery)
-Acionada quando temos **apenas o CPF** do cliente.
-- **Fluxo:** O robô busca pelo CPF no Eproc.
-- **Objetivo:** Como não há um processo específico, o sistema faz o download do código-fonte da página de resultados (`page_source.html`) e procura, via strings estáticas, por indicativos de risco (como _"BUSCA E APREENSÃO"_, _"EXECUÇÃO"_, _"MONITÓRIA"_).
-- **Ação:** Identificada a ameaça, emite um status de alerta na planilha indicando que o CS precisa investigar manualmente.
-
-### 2. Fase de Monitoramento (Monitoring)
-Acionada quando temos **o CPF e o Número do Processo** exato do cliente.
-- **Fluxo:** Busca pelo CPF e, ao listar os processos, clica e acessa os detalhes do processo esperado.
-- **Objetivo:** O robô extrai os dados mais recentes do processo usando **Regex**, capturando a *Classe da Ação*, *Data da Movimentação* e *Descrição da Movimentação*.
-- **Ação:** Baseado em Regras de Negócio, avalia a criticidade. Por exemplo, uma classe de "Busca e Apreensão" que tenha movimentação de "Mandado" dispara um alerta vermelho `🚨 ALERTA VERMELHO`.
-
-Para mais detalhes sobre as decisões técnicas, veja a documentação de arquitetura na pasta interna ou o código fonte em `eproc_consultant/scraper.py`.
-
----
-
-## ⚙️ Tecnologias Utilizadas
-
-- **[Python](https://www.python.org/)**: Linguagem principal do projeto.
-- **[undetected-chromedriver](https://github.com/ultrafunkamigo/undetected-chromedriver)**: Biblioteca crítica para burlar a detecção antibot do **Cloudflare**. Opera manipulando as opções do Chrome para evitar bloqueios no Eproc.
-- **[Openpyxl](https://openpyxl.readthedocs.io/en/stable/)**: Usado para leitura e escrita na planilha de controle sem corromper as planilhas existentes.
-- **Regex**: Módulo nativo `re` para parsear o DOM do HTML sem depender de sobrecarga de processos de browser ao ler as páginas finais.
-
----
-
-## 🛠 Configuração e Instalação
+Para rodar este sistema do zero em qualquer computador com Windows, criamos um script que faz tudo por você.
 
 ### Pré-requisitos
-- Ter o **Google Chrome** instalado na máquina local (a versão deve ser pareada com a variável `version_main=147` no código, caso seja diferente, atualize em `scraper.py`).
-- Ter o Python 3 instalado.
+1. **Python 3.10+** (Com o `pip` incluso e adicionado ao PATH do Windows)
+2. **Node.js** (Versão 18+ com NPM)
+3. **Google Chrome** (Para a automação RPA funcionar em segundo plano)
 
-### Instalação
-Crie seu ambiente virtual e instale as dependências.
-```bash
-python -m venv venv
-source venv/Scripts/activate  # No Windows, use: .\venv\Scripts\activate
-pip install undetected-chromedriver selenium openpyxl pandas
-```
+### Iniciando com 1 Clique
+Basta dar um duplo clique no arquivo **`setup_e_iniciar.bat`** localizado na raiz desta pasta.
 
----
-
-## 📂 Configurando a Planilha Base
-
-A operação do robô depende do arquivo:
-`platform_manager/base_clientes.xlsx`
-
-Esta planilha atua como banco de dados temporário. **As duas primeiras colunas são obrigatórias**:
-1. **CPF** (Coluna A)
-2. **NÚMERO DO PROCESSO** (Coluna B) - _Se deixar em branco, ativa a Fase 1 (Discovery)_.
-
-O robô gera automaticamente o relatório injetando colunas de `C` até `G` com os seguintes dados:
-- Status da Consulta
-- Classe da Ação
-- Data da Movimentação
-- Descrição da Movimentação
-- Triagem (Alertas gerados pelas regras de negócios)
+**O que ele faz automaticamente:**
+1. Cria e configura o ambiente virtual Python (`venv`).
+2. Instala todas as dependências da automação e do servidor (FastAPI, DrissionPage, SQLAlchemy).
+3. Liga o servidor do Backend na porta `8000`.
+4. Instala as dependências de interface (Vite, Tailwind, React).
+5. Inicia a interface gráfica e abre o navegador no painel.
 
 ---
 
-## 🚀 Como Executar o Bot
+## 🏛️ Arquitetura do Sistema
 
-> [!WARNING] Importante!
-> Não mantenha o arquivo `base_clientes.xlsx` aberto no Microsoft Excel durante a execução. O arquivo é bloqueado e o robô falhará ao tentar salvar o relatório final.
+O projeto adota uma arquitetura Cliente-Servidor (Frontend + Backend), focado em estabilidade, modernidade estética (*Glassmorphism*) e eficiência no banco de dados SQLite nativo.
 
-Para iniciar o processo de raspagem de dados, rode o script na raiz do repositório:
+### 1. Backend (Python + FastAPI)
+Diretório: `Apoio Ao CS/backend/`
 
-```bash
-cd eproc_consultant
-python test_scraper.py
-```
+O motor principal. Ele não só serve os dados para as telas, como também roda o robô de extração de dados.
+- **`main.py` e `patch_routes.py`**: Arquivos principais que rodam as APIs, calculam as comissões, métricas e o motor de prioridades.
+- **`areacs_routes.py`**: Rotas exclusivas de gerenciamento de contatos, quitações, e o sistema importador de planilhas de base (`Clientes.xlsx`).
+- **`eproc_scraper.py`**: O Robô (RPA). Utiliza a biblioteca `DrissionPage` para controlar o Google Chrome por debaixo dos panos via protocolo *CDP (Chrome DevTools)*, superando o Cloudflare (Captcha invisível) que bloqueia robôs comuns (como o Selenium).
+- **`database.db`**: Banco de dados relacional oficial. Armazena usuários, clientes importados, comissionamentos (`Attendance`) e histórico da triagem do Eproc.
 
-O bot será inicializado **não-headless** (a janela abrirá). Isto é um requisito técnico no Eproc atual para ajudar no processamento seguro do Cloudflare e dos tempos de sessão estipulados via `WebDriverWait` (10s para estabilidade máxima). Acompanhe o log diretamente pelo terminal para ver a progressão do lote.
+### 2. Frontend (React + Vite)
+Diretório: `Apoio Ao CS/frontend/`
+
+A interface gráfica de altíssimo padrão, dividida em dois perfis de acesso (Gerente/Supervisor e Operador CS).
+- **`Dashboard.jsx`**: Painel central. Possui gráficos automáticos (Pizza, Barras) e um *Radar de Prioridades* que calcula as metas e prazos (7 dias para clientes Críticos, 15 para Atenção) e atualiza os ganhos financeiros em tempo real.
+- **`AreaCS.jsx` (Meus Clientes)**: Funil de atendimento. Quando o CS clica em "Atender", o frontend sinaliza o backend para somar contatos e depositar R$ 1,50 (ajustável) na conta do colaborador.
+- **`Configuracoes.jsx`**: Tela Gerencial. Permite ao gerente enviar e atualizar a base corporativa lendo automaticamente o arquivo `Clientes.xlsx`.
+
+---
+
+## 🔒 Regras de Negócio Implementadas
+
+1. **Upload Inteligente:** A importação da planilha lida automaticamente com acentuações ("Código DJ") e impede duplicação de dados, mesclando IDs.
+2. **Triagem de Processos:** O EprocTracker lê e varre eventos processuais dos TJs. Quando ele localiza a classe "Busca e Apreensão", o sistema gera um Alerta Crítico vermelho interativo piscando na tela do Gerente.
+3. **Comissionamento Automático:** Nenhum valor ou cálculo é gerado na tela. Tudo é oficializado no cofre do servidor, travando fraudes. Se o atendimento for desfeito ("Tentativa/Desfazer"), o valor gerado é revogado no cofre.
+4. **Escalabilidade Multi-Usuários:** Base preparada para expandir para múltiplos operadores simultâneos conectados ao mesmo servidor.
+
+---
+*Desenvolvido e documentado exclusivamente para Reis Revisional.*

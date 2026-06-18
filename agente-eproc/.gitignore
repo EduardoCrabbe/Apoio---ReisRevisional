@@ -1,0 +1,11 @@
+# Artefatos gerados pelo agente na máquina do CS (nunca versionar)
+config.json
+resultados_local.db
+relatorio_dia.html
+pendentes_local.json
+agente.log
+page_source*.html
+*.spec
+__pycache__/
+build/
+dist/

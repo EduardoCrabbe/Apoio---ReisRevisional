@@ -11,10 +11,14 @@
             "id": "f3ecf4fb5476d69d",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Visualização em gráfico"
+              "type": "markdown",
+              "state": {
+                "file": "Engenharia de Software/05. Documentacao da API (Swagger).md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "05. Documentacao da API (Swagger)"
             }
           }
         ]
@@ -90,7 +94,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Sem título.base",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -100,7 +103,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Links inversos para Sem título"
+              "title": "Links inversos"
             }
           },
           {
@@ -179,8 +182,12 @@
       "bases:Criar nova base": false
     }
   },
-  "active": "f3ecf4fb5476d69d",
+  "active": "644dd3b3d7bec36a",
   "lastOpenFiles": [
+    "Engenharia de Software/04. Entidade-Relacionamento (ERD).md",
+    "Engenharia de Software/02. C4 Model - Arquitetura.md",
+    "Engenharia de Software/01. Documento de Requisitos (PRD).md",
+    "Engenharia de Software/00 - Índice Engenharia.md",
     "Apoio Ao CS/Manual_do_Usuario.md",
     "Apoio Ao CS/regras_negocio.md",
     "Apoio Ao CS/README.md",
@@ -193,15 +200,11 @@
     "Apoio Ao CS/Projeto para Reis Revisional/Eproc Tracker - Arquitetura Base/1. Setup Inicial.md",
     "Apoio Ao CS/Projeto para Reis Revisional/Eproc Tracker - Arquitetura Base/00 - Índice Eproc.md",
     "Apoio Ao CS/00 - Índice CS Manager.md",
-    "Engenharia de Software/04. Entidade-Relacionamento (ERD).md",
     "Engenharia de Software/05. Documentacao da API (Swagger).md",
-    "Engenharia de Software/01. Documento de Requisitos (PRD).md",
     "Apoio Ao CS/walkthrough.md",
     "Apoio Ao CS/task.md",
     "Apoio Ao CS/Projeto para Reis Revisional/Eproc Tracker - Arquitetura Base/2. Arquitetura do Scraper.md",
     "Engenharia de Software/03. Diagramas de Sequencia.md",
-    "Engenharia de Software/02. C4 Model - Arquitetura.md",
-    "Engenharia de Software/00 - Índice Engenharia.md",
     "Engenharia de Software",
     "Apoio Ao CS/Projeto para Reis Revisional/Eproc Tracker - Arquitetura Base",
     "Sem título",

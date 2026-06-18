@@ -1,12 +1,54 @@
-# Python
+# ============================================================
+# Projeto Reis Revisional — Apoio ao CS
+# .gitignore da raiz (cobre backend, frontend e agente-eproc)
+# ============================================================
+
+# --- Segredos e ambiente ---
+.env
+.env.local
+.env.*.local
+
+# --- Banco de dados (SQLite local, dados de runtime) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 venv/
-env/
-.env
 .venv/
+env/
 
-# Arquivos sensíveis
+# --- Node / Frontend ---
+node_modules/
+dist/
+dist-ssr/
+build/
+release/
+
+# --- Uploads e dados sensíveis (LGPD: planilhas de clientes/CPFs) ---
+uploads/
 *.xlsx
 *.csv
+# exceção: planilha de exemplo FICTÍCIA do agente (sem dados reais) — versionada p/ o demo
+!agente-eproc/planilha_exemplo.xlsx
+
+# --- Artefatos de scraping (dumps de página) ---
+page_source*.html
+
+# --- Logs ---
+*.log
+
+# --- PyInstaller (specs) ---
+*.spec
+
+# --- Executáveis empacotados (NÃO versionar — chegam a GBs) ---
+*.exe
+
+# --- IDEs / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
