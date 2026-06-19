@@ -1,31 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Users, LayoutDashboard, Settings, LogOut, Activity, Trophy, Calculator, Moon, Sun } from 'lucide-react';
+import { Users, LayoutDashboard, Settings, LogOut, Activity, Trophy, Moon, Sun, Siren } from 'lucide-react';
 import clsx from 'clsx';
+import { api } from '../services/api';
 
 export default function Sidebar({ role, user, isDarkMode, toggleDarkMode, onLogout }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
-  const username = user?.email || 'Gerente';
-  const displayName = user?.email?.split('@')[0] || (isManager ? 'Gerente' : 'CS');
+  const displayName = user?.nome_exibicao || user?.email?.split('@')[0] || (isManager ? 'Gerente' : 'CS');
 
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
     if (!isManager) {
-      const fetchStats = async () => {
-        try {
-          const res = await fetch(`http://127.0.0.1:8000/api/dashboard/stats?user=${username}`);
-          if (res.ok) {
-            const data = await res.json();
-            setStats(data);
-          }
-        } catch (e) {
-          console.error("Erro ao buscar stats para a sidebar", e);
-        }
-      };
-      fetchStats();
+      api.get('/api/dashboard/stats')
+        .then(setStats)
+        .catch((e) => console.error('Erro ao buscar stats para a sidebar', e));
     }
-  }, [isManager, username]);
+  }, [isManager]);
 
   const totalChart = stats ? (stats.atendidos + stats.naoAtendidos + stats.tentativas) : 0;
   const p1 = totalChart > 0 ? (stats.atendidos / totalChart) * 100 : 0;
@@ -40,6 +31,7 @@ export default function Sidebar({ role, user, isDarkMode, toggleDarkMode, onLogo
     { to: '/quitacoes', icon: Activity, label: 'Quitações' },
     { to: '/bonus', icon: Trophy, label: 'Bônus e Comissões' },
     { to: '/eproc-tracker', icon: Activity, label: 'Monitoramento' },
+    { to: '/alertas-criticos', icon: Siren, label: 'Alertas Críticos' },
     ...(isManager ? [{ to: '/configuracoes', icon: Settings, label: 'Configurações' }] : []),
   ];
 

@@ -5,28 +5,26 @@ import Dashboard from './pages/Dashboard';
 import AreaCS from './pages/AreaCS';
 import Bonus from './pages/Bonus';
 import EprocTracker from './pages/EprocTracker';
+import AlertasCriticos from './pages/AlertasCriticos';
 import Configuracoes from './pages/Configuracoes';
 import EquipeCS from './pages/EquipeCS';
 import Quitacoes from './pages/Quitacoes';
 import Login from './pages/Login';
+import { getUser, getToken, clearSession } from './services/api';
 
 function App() {
-  const [user, setUser] = useState(null);
+  // Sessão persistida: sobrevive a refresh (token + usuário no localStorage).
+  const [user, setUser] = useState(() => (getToken() ? getUser() : null));
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', isDarkMode);
   }, [isDarkMode]);
 
-  const handleLogin = (userData) => {
-    setUser(userData);
-  };
+  const handleLogin = (userData) => setUser(userData);
 
   const handleLogout = () => {
+    clearSession();
     setUser(null);
   };
 
@@ -40,6 +38,7 @@ function App() {
     );
   }
 
+  // O papel vem do usuário autenticado (JWT) — sem seletor de "visualizar como".
   const role = user.role === 'CS' ? 'CS' : 'Gerente';
 
   return (
@@ -57,11 +56,12 @@ function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard role={role} user={user} />} />
-              <Route path="/meus-clientes" element={<AreaCS user={user} />} />
+              <Route path="/meus-clientes" element={<AreaCS user={user} role={role} />} />
               <Route path="/equipe-cs" element={<EquipeCS />} />
               <Route path="/quitacoes" element={<Quitacoes role={role} />} />
               <Route path="/bonus" element={<Bonus role={role} user={user} />} />
               <Route path="/eproc-tracker" element={<EprocTracker user={user} />} />
+              <Route path="/alertas-criticos" element={<AlertasCriticos />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Routes>
           </div>

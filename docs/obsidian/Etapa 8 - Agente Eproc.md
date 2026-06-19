@@ -94,4 +94,4 @@ nenhum ganho. Por isso:
 ## Navegação
 
 - ⬅ [[Etapa 7 - IA Gemini]]
-- ➡ [[Etapa 9 - Integração Frontend]]
+- ➡ [[Etapa 9 - Integracao Frontend]]

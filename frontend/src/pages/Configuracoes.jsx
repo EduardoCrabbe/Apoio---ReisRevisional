@@ -1,210 +1,127 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, X, Save } from 'lucide-react';
+import { Save, Loader2, CheckCircle, AlertOctagon } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function Configuracoes() {
   const [equipe, setEquipe] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [novoCS, setNovoCS] = useState({ nome: '', email: '', nivel: 1 });
+  const [prompt, setPrompt] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [salvandoPrompt, setSalvandoPrompt] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  useEffect(() => {
-    const saved = localStorage.getItem('equipeCS');
-    if (saved) {
-      setEquipe(JSON.parse(saved));
-    } else {
-      const defaultEquipe = [
-        { id: 1, nome: 'Edu crabbe', email: 'eduardo@reisrevisional.com.br', nivel: 1, totalClientes: 100, atendidos: 60, quitacoes: 4, comentarios: 12, ganhos: 345.50 },
-        { id: 2, nome: 'Ana Souza', email: 'ana@reisrevisional.com.br', nivel: 3, totalClientes: 120, atendidos: 100, quitacoes: 8, comentarios: 20, ganhos: 850.00 }
-      ];
-      setEquipe(defaultEquipe);
-      localStorage.setItem('equipeCS', JSON.stringify(defaultEquipe));
-    }
-  }, []);
-
-  const handleLevelChange = (id, newNivel) => {
-    const updated = equipe.map(cs => cs.id === id ? { ...cs, nivel: Number(newNivel) } : cs);
-    setEquipe(updated);
-    localStorage.setItem('equipeCS', JSON.stringify(updated));
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000);
   };
 
-  const handleAddCS = (e) => {
-    if (e) e.preventDefault();
-    if (!novoCS.nome || !novoCS.email) {
-      alert('Por favor, preencha o Nome e o E-mail do CS!');
-      return;
+  const carregar = async () => {
+    setLoading(true);
+    try {
+      const [eq, pr] = await Promise.all([
+        api.get('/api/equipe'),
+        api.get('/api/settings/ai-prompt'),
+      ]);
+      setEquipe(Array.isArray(eq) ? eq : []);
+      setPrompt(pr?.ai_prompt || '');
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const newCsEntry = {
-      id: Date.now(),
-      nome: novoCS.nome,
-      email: novoCS.email,
-      nivel: Number(novoCS.nivel),
-      totalClientes: 0,
-      atendidos: 0,
-      quitacoes: 0,
-      comentarios: 0,
-      ganhos: 0.0
-    };
+  useEffect(() => { carregar(); }, []);
 
-    const updatedEquipe = [...equipe, newCsEntry];
-    setEquipe(updatedEquipe);
-    localStorage.setItem('equipeCS', JSON.stringify(updatedEquipe));
-    setIsModalOpen(false);
-    setNovoCS({ nome: '', email: '', nivel: 1 });
+  const handleNivel = async (csId, nivel) => {
+    const anterior = equipe;
+    setEquipe((prev) => prev.map((c) => c.cs_id === csId ? { ...c, nivel: Number(nivel) } : c));
+    try {
+      await api.put(`/api/equipe/${csId}/nivel`, { level_cs: Number(nivel) });
+      showToast('Nível atualizado.');
+    } catch (e) {
+      setEquipe(anterior);
+      showToast(e.message, 'error');
+    }
+  };
+
+  const salvarPrompt = async () => {
+    setSalvandoPrompt(true);
+    try {
+      await api.put('/api/settings/ai-prompt', { ai_prompt: prompt });
+      showToast('Prompt salvo com sucesso!');
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setSalvandoPrompt(false);
+    }
   };
 
   return (
     <div className="space-y-8 max-w-4xl pb-12 relative">
-      <header className="flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-bold text-brand-navy dark:text-white">Configurações do Sistema</h2>
-          <p className="text-slate-500 mt-1">Acesso restrito para Supervisor e Gerente.</p>
-        </div>
-        <div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-brand-navy text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-blue-900 flex items-center gap-2 transition-colors"
-          >
-            <UserPlus className="w-5 h-5 text-brand-gold" />
-            Adicionar CS
-          </button>
-        </div>
+      <header>
+        <h2 className="text-3xl font-bold text-brand-navy dark:text-white">Configurações do Sistema</h2>
+        <p className="text-slate-500 mt-1">Acesso restrito a Gerente.</p>
       </header>
-      
+
       <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">Gerenciamento de Equipe</h3>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">Níveis de Comissionamento da Equipe</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-          Atribua o nível de bônus para cada Customer Success. O nível afeta diretamente o cálculo de comissionamento de cada um.
+          O nível afeta apenas lançamentos FUTUROS — os valores já lançados ficam congelados.
         </p>
-        
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse mb-4">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
-                <th className="px-4 py-3 font-bold">Nome do CS</th>
-                <th className="px-4 py-3 font-bold">Email</th>
-                <th className="px-4 py-3 font-bold text-center">Nível Atual</th>
-                <th className="px-4 py-3 font-bold text-right">Ação</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-              {equipe.map((cs) => (
-                <tr key={cs.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-4 text-brand-navy dark:text-slate-200 font-bold">{cs.nome}</td>
-                  <td className="px-4 py-4 text-slate-500 dark:text-slate-400">{cs.email}</td>
-                  <td className="px-4 py-4 text-center">
-                    <select 
-                      value={cs.nivel}
-                      onChange={(e) => handleLevelChange(cs.id, e.target.value)}
-                      className="border border-slate-200 dark:border-slate-600 rounded p-1.5 font-bold text-brand-navy dark:text-slate-200 bg-white dark:bg-[#112240] cursor-pointer shadow-sm focus:outline-none focus:border-brand-gold"
-                    >
-                      <option value={1}>Nível 1</option>
-                      <option value={2}>Nível 2</option>
-                      <option value={3}>Nível 3</option>
-                      <option value={4}>Nível 4</option>
-                      <option value={5}>Nível 5</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <button className="text-emerald-600 hover:text-emerald-500 font-bold flex items-center gap-1 justify-end w-full">
-                      <Save className="w-4 h-4" /> Salvo
-                    </button>
-                  </td>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 text-slate-400 p-8"><Loader2 className="w-5 h-5 animate-spin" /> Carregando...</div>
+          ) : equipe.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">Nenhum CS cadastrado.</div>
+          ) : (
+            <table className="w-full text-left border-collapse mb-2">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                  <th className="px-4 py-3 font-bold">Nome do CS</th>
+                  <th className="px-4 py-3 font-bold text-center">Clientes</th>
+                  <th className="px-4 py-3 font-bold text-center">Nível Atual</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
+                {equipe.map((cs) => (
+                  <tr key={cs.cs_id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                    <td className="px-4 py-4 text-brand-navy dark:text-slate-200 font-bold">{cs.nome}</td>
+                    <td className="px-4 py-4 text-center text-slate-500">{cs.totalClientes}</td>
+                    <td className="px-4 py-4 text-center">
+                      <select value={cs.nivel ?? 1} onChange={(e) => handleNivel(cs.cs_id, e.target.value)} className="border border-slate-200 dark:border-slate-600 rounded p-1.5 font-bold text-brand-navy dark:text-slate-200 bg-white dark:bg-[#112240] cursor-pointer shadow-sm focus:outline-none focus:border-brand-gold">
+                        {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>Nível {n}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h3 className="text-lg font-bold text-slate-800 mb-4">Prompt da Inteligência Artificial</h3>
-        <p className="text-sm text-slate-500 mb-4">
-          Este é o prompt base que a IA usará para transcrever áudios e sumarizar os atendimentos do CS. Lembre-se de instruir a IA a falar em primeira pessoa.
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4">Prompt da Inteligência Artificial</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+          Prompt base usado pela IA para transcrever e resumir os atendimentos (em primeira pessoa, sem expor CPF).
         </p>
-        
-        <textarea 
-          className="w-full h-48 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
-          defaultValue="Aja como se fosse eu (um CS da Reis Revisional). Crie um resumo amigável do atendimento transcrito..."
-        ></textarea>
-
+        <textarea
+          className="w-full h-48 p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-gold transition-all resize-none"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          disabled={loading}
+        />
         <div className="flex justify-end mt-4">
-          <button onClick={() => alert('Prompt salvo com sucesso!')} className="bg-brand-navy text-white px-6 py-2 rounded-xl font-bold shadow-sm hover:bg-blue-900 transition-colors">
-            Salvar Prompt
+          <button onClick={salvarPrompt} disabled={salvandoPrompt || loading} className="bg-brand-navy text-white px-6 py-2 rounded-xl font-bold shadow-sm hover:bg-blue-900 transition-colors flex items-center gap-2 disabled:opacity-60">
+            {salvandoPrompt ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar Prompt
           </button>
         </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="bg-brand-cream dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700 p-4 flex justify-between items-center">
-              <h3 className="font-bold text-brand-navy dark:text-white text-lg flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-brand-gold" />
-                Cadastrar Novo CS
-              </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-300">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Nome Completo</label>
-                <input 
-                  type="text"
-                  required
-                  value={novoCS.nome}
-                  onChange={e => setNovoCS({...novoCS, nome: e.target.value})}
-                  className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#112240] dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-brand-navy transition-colors"
-                  placeholder="Ex: Carlos Oliveira"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">E-mail</label>
-                <input 
-                  type="email"
-                  required
-                  value={novoCS.email}
-                  onChange={e => setNovoCS({...novoCS, email: e.target.value})}
-                  className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#112240] dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-brand-navy transition-colors"
-                  placeholder="Ex: carlos@reisrevisional.com.br"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Nível Inicial</label>
-                <select
-                  value={novoCS.nivel}
-                  onChange={e => setNovoCS({...novoCS, nivel: e.target.value})}
-                  className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#112240] dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-brand-navy transition-colors cursor-pointer"
-                >
-                  <option value={1}>Nível 1 (Iniciante)</option>
-                  <option value={2}>Nível 2 (Intermediário)</option>
-                  <option value={3}>Nível 3 (Avançado)</option>
-                  <option value={4}>Nível 4 (Sênior)</option>
-                  <option value={5}>Nível 5 (Especialista)</option>
-                </select>
-              </div>
-
-              <div className="pt-4 flex gap-3">
-                <button 
-                  type="button" 
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 bg-slate-100 text-slate-600 dark:text-slate-300 dark:bg-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="button" 
-                  onClick={handleAddCS}
-                  className="flex-1 bg-brand-navy text-white font-bold py-3 rounded-xl hover:bg-blue-900 shadow-md transition-colors"
-                >
-                  Confirmar Cadastro
-                </button>
-              </div>
-            </form>
-          </div>
+      {toast.show && (
+        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+          {toast.type === 'error' ? <AlertOctagon className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+          <span className="font-medium text-sm">{toast.message}</span>
         </div>
       )}
     </div>

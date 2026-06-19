@@ -20,5 +20,6 @@ em `docs/DECISOES.md` (na raiz de `docs/`) e nas notas de cada etapa.
 | ADR-6 | **Agente Eproc desacoplado** (local-primeiro, best-effort); scraping só no agente | CS trabalha com servidor fora; **CPF nunca viaja** (server rejeita 422) | [[Etapa 8 - Agente Eproc]] |
 | ADR-7 | **bcrypt direto** (não passlib) | `passlib 1.7.4` quebra com `bcrypt 5.0` no venv | `docs/DECISOES.md` |
 | ADR-8 | **Sem `relationship()` ORM** nesta fase (só FKs) | Evita ambiguidade de mapper em tabelas com 2 FKs p/ `users` | `docs/DECISOES.md` |
+| ADR-9 | **Frontend via `services/api.js`** (JWT automático, interceptor 401, erro amigável); zero dado de negócio em `localStorage` | Telas desacopladas do backend; sessão expira limpa; sem dados falsos offline | [[Etapa 9 - Integracao Frontend]] |
 
 Ver também: [[Etapa 0 - Estrutura do Repositorio]] e `docs/DECISOES.md`.

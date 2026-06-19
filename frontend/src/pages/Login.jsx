@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2, Shield, User } from 'lucide-react';
+import { api, setSession } from '../services/api';
+
+const DEMO = {
+  gerente: {
+    email: import.meta.env.VITE_DEMO_GERENTE_EMAIL || 'gerente@reisrevisional.com.br',
+    senha: import.meta.env.VITE_DEMO_GERENTE_SENHA || 'demo1234',
+  },
+  cs: {
+    email: import.meta.env.VITE_DEMO_CS_EMAIL || 'cs@reisrevisional.com.br',
+    senha: import.meta.env.VITE_DEMO_CS_SENHA || 'demo1234',
+  },
+};
 
 export default function Login({ onLogin }) {
   const navigate = useNavigate();
@@ -9,32 +21,24 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const autenticar = async (mail, senha) => {
     setError('');
     setLoading(true);
-
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.detail || 'Erro ao fazer login.');
-        return;
-      }
-
+      const data = await api.post('/api/auth/login', { email: mail, password: senha });
+      setSession(data.access_token, data.user); // token + papel vêm do backend
       onLogin(data.user);
       navigate('/dashboard');
-    } catch {
-      setError('Não foi possível conectar ao servidor. Verifique se o backend está rodando.');
+    } catch (err) {
+      setError(err.message || 'Erro ao fazer login.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    autenticar(email, password);
   };
 
   return (
@@ -89,14 +93,33 @@ export default function Login({ onLogin }) {
             disabled={loading}
             className="w-full bg-brand-bronze hover:bg-[#7a5f3b] disabled:opacity-60 text-white font-bold py-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
           >
-            {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <ArrowRight className="w-5 h-5" />
-            )}
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
+
+        {/* Atalhos de demonstração — login sem digitar senha no palco. */}
+        <div className="w-full mt-6 pt-6 border-t border-slate-100">
+          <p className="text-[11px] uppercase tracking-wider text-slate-400 font-bold mb-3">Acesso rápido (demo)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => autenticar(DEMO.gerente.email, DEMO.gerente.senha)}
+              className="flex items-center justify-center gap-2 border border-slate-200 hover:border-brand-bronze text-brand-navy font-bold py-3 rounded-xl text-sm disabled:opacity-60 transition-colors"
+            >
+              <Shield className="w-4 h-4 text-brand-bronze" /> Gerente
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => autenticar(DEMO.cs.email, DEMO.cs.senha)}
+              className="flex items-center justify-center gap-2 border border-slate-200 hover:border-brand-bronze text-brand-navy font-bold py-3 rounded-xl text-sm disabled:opacity-60 transition-colors"
+            >
+              <User className="w-4 h-4 text-brand-bronze" /> CS
+            </button>
+          </div>
+        </div>
 
       </div>
     </div>

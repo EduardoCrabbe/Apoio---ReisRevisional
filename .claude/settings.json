@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST http://127.0.0.1:8001/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"cs@reisrevisional.com.br\",\"senha\":\"cs123456\"}')",
+      "Bash(python3 -m json.tool)",
+      "PowerShell(Stop-Process -Id 18108 -Force)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(cd \"c:\\\\Users\\\\Eduardo\\\\OneDrive\\\\Documents\\\\Projeto Reis Revisional\\\\reis-revisional\\\\backend\"; $env:PYTHONPATH = \".\"; $proc = Start-Process -FilePath \".\\\\venv\\\\Scripts\\\\uvicorn.exe\" -ArgumentList \"app.main:app\", \"--host\", \"127.0.0.1\", \"--port\", \"8001\" -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 6; if \\($proc.HasExited\\) { Write-Host \"Processo encerrou com codigo $\\($proc.ExitCode\\)\" } else { Write-Host \"Backend rodando PID=$\\($proc.Id\\)\" }; Invoke-RestMethod -Uri \"http://127.0.0.1:8001/health\" -ErrorAction SilentlyContinue)"
+    ]
+  }
+}

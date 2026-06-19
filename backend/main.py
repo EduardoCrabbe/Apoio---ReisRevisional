@@ -15,6 +15,7 @@ from services.tarefas import lifespan
 
 from auth.router import router as auth_router
 from routers.clientes import router as clientes_router
+from routers.quitacoes import router as quitacoes_router
 from routers.bonus import router as bonus_router
 from routers.comissoes import router as comissoes_router
 from routers.tarefas import router as tarefas_router
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     # Cada router já traz o próprio prefixo /api/... — não duplicar aqui.
     app.include_router(auth_router)
     app.include_router(clientes_router)
+    app.include_router(quitacoes_router)
     app.include_router(bonus_router)
     app.include_router(comissoes_router)
     app.include_router(tarefas_router)

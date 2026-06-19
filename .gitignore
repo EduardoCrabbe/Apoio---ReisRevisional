@@ -47,6 +47,9 @@ page_source*.html
 # --- Executáveis empacotados (NÃO versionar — chegam a GBs) ---
 *.exe
 
+# --- Projeto TS separado (protótipo): merece repo próprio, não versionar aqui ---
+reis-revisional/
+
 # --- IDEs / OS ---
 .vscode/
 .idea/
