@@ -110,11 +110,13 @@ def main():
         agora = agora_utc()
 
         # Carteira do Eduardo (CS demo logado): nomes só de primeiro nome.
+        # Os 3 primeiros ids (10683, 12175, 11839) são os "reais" e batem com a
+        # planilha do agente (planilha_exemplo.xlsx) — é o que liga o agente à web.
         clientes_edu = [
             # id, nome, criticidade, tem_processo, status, contatos, ultimo_contato
-            ("100201", "João",    "Crítico", "Sim", "Ativo", 1, agora - timedelta(days=9)),
-            ("100202", "Marcos",  "Atenção", "Não", "Ativo", 0, None),
-            ("100203", "Beatriz", "Regular", "Não", "Ativo", 2, agora - timedelta(hours=10)),
+            ("10683",  "João",    "Crítico", "Sim", "Ativo", 1, agora - timedelta(days=9)),
+            ("12175",  "Marcos",  "Atenção", "Não", "Ativo", 0, None),
+            ("11839",  "Beatriz", "Regular", "Não", "Ativo", 2, agora - timedelta(hours=10)),
             ("100204", "Carla",   "Crítico", "Sim", "Ativo", 0, None),
             ("100205", "Rafael",  "Regular", "Não", "Quitado", 3, agora - timedelta(days=2)),
         ]
@@ -140,7 +142,7 @@ def main():
 
         # Atendimentos congelados (alimentam ganhos do mês) — só se ainda não houver.
         if db.query(models.Attendance).count() == 0:
-            for cid, uid, val in [("100203", eduardo.id, 1.0), ("100203", eduardo.id, 1.0),
+            for cid, uid, val in [("11839", eduardo.id, 1.0), ("11839", eduardo.id, 1.0),
                                   ("100301", ana.id, 1.5)]:
                 db.add(models.Attendance(user_id=uid, customer_id=cid, timestamp=agora, commission_value=val))
             db.commit()
@@ -159,10 +161,13 @@ def main():
             db.commit()
 
         # 🚨 O momento cross-produto: alerta vermelho do robô + tarefa crítica.
-        cliente_alerta = db.get(models.Customer, "100201")  # João, crítico do Eduardo
+        # Mesmo id (10683) que a planilha do agente envia — rodar o agente
+        # reforça este alerta (a tarefa não duplica). Pré-semeado para o demo
+        # funcionar mesmo SEM rodar o agente.
+        cliente_alerta = db.get(models.Customer, "10683")  # João, crítico do Eduardo
         if db.query(models.RoboResultado).filter_by(triagem=ALERTA_VERMELHO).first() is None:
             db.add(models.RoboResultado(
-                customer_id="100201",
+                customer_id="10683",
                 classe="BUSCA E APREENSAO",
                 data_movimentacao=agora.strftime("%d/%m/%Y"),
                 descricao="Juntada de Petição / Mandado de busca e apreensão expedido.",
