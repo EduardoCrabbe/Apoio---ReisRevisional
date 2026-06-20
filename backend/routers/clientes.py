@@ -7,7 +7,7 @@ services/clientes.py; aqui só fazemos a tradução HTTP e a validação de pape
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -31,10 +31,18 @@ class ClienteCreate(BaseModel):
     cs_id: Optional[int] = None  # obrigatório só para gestão
 
 
+PROTESTO_VALIDOS = {"Sim", "Não possui", "Cliente ciente"}
+
+
 class ClienteUpdate(BaseModel):
     criticidade: Optional[str] = None
     tem_processo: Optional[str] = None
     contrato: Optional[str] = None
+    # Status jurídico (editável na tela Quitações). bool é validado pelo Pydantic
+    # (não-bool → 422); protesto valida o enum no router.
+    protesto: Optional[str] = None
+    tarifas_restituiveis: Optional[bool] = None
+    consulta_processo: Optional[bool] = None
 
 
 class ClienteOut(BaseModel):
@@ -51,11 +59,15 @@ class ClienteOut(BaseModel):
     contatos: int
     tentativas: int
     ultimo_contato: Optional[datetime] = None
+    protesto: str = "Não possui"
+    tarifas_restituiveis: bool = False
+    consulta_processo: bool = False
 
 
 class QuitarIn(BaseModel):
     valor_original: float
     valor_pago: float
+    pagamento: Optional[str] = None  # texto livre; obrigatoriedade validada no service (422 se vazio)
     data_boleto: Optional[date] = None
     data_pagamento: Optional[date] = None
     consulta_processo: str = "Ativa"
@@ -125,12 +137,20 @@ def atualizar(
 ):
     cliente = svc.buscar_cliente(db, customer_id)
     svc.exigir_pode_editar(cliente, user)
+    if payload.protesto is not None and payload.protesto not in PROTESTO_VALIDOS:
+        raise HTTPException(422, f"protesto inválido. Válidos: {sorted(PROTESTO_VALIDOS)}.")
     if payload.criticidade is not None:
         cliente.criticidade = payload.criticidade
     if payload.tem_processo is not None:
         cliente.tem_processo = payload.tem_processo
     if payload.contrato is not None:
         cliente.contrato = payload.contrato
+    if payload.protesto is not None:
+        cliente.protesto = payload.protesto
+    if payload.tarifas_restituiveis is not None:
+        cliente.tarifas_restituiveis = payload.tarifas_restituiveis
+    if payload.consulta_processo is not None:
+        cliente.consulta_processo = payload.consulta_processo
     db.commit()
     db.refresh(cliente)
     return cliente

@@ -52,8 +52,13 @@ def ganhos_do_mes(db, cs_id=None) -> float:
 
 
 def radar_prioridades(db, cs_id=None):
-    """Clientes Ativos Crítico/Atenção, ordenados do mais atrasado ao menos."""
+    """Radar = clientes Ativos Crítico/Atenção em atraso + tarefas abertas
+    CRÍTICA/URGENTE (origem sistema OU manual), mescladas e ordenadas do mais
+    atrasado ao menos. Cada item traz `tipo` ("cliente"|"tarefa") e `origem_radar`
+    para a tela diferenciar visualmente."""
     agora = _utcnow()
+
+    # --- clientes Crítico/Atenção ---
     q = db.query(models.Customer).filter(
         models.Customer.status == "Ativo",
         models.Customer.criticidade.in_(list(LIMITE_DIAS.keys())),
@@ -72,6 +77,8 @@ def radar_prioridades(db, cs_id=None):
             horas = round(restante.total_seconds() / 3600, 1)
             atrasado = restante.total_seconds() < 0
         itens.append({
+            "tipo": "cliente",
+            "origem_radar": "cliente em atraso",
             "customer_id": c.id_datajuri,
             "nome": c.first_name,
             "criticidade": c.criticidade,
@@ -80,7 +87,48 @@ def radar_prioridades(db, cs_id=None):
             "status": "Atrasado" if atrasado else "No prazo",
         })
 
-    # Mais atrasado primeiro: ultimo_contato None = -inf; depois horas crescente.
+    # --- tarefas abertas CRÍTICA/URGENTE (sistema ou manual) ---
+    tq = db.query(models.Tarefa).filter(
+        models.Tarefa.concluida.is_(False),
+        models.Tarefa.classificacao == "CRÍTICA/URGENTE",
+    )
+    if cs_id is not None:
+        tq = tq.filter(models.Tarefa.responsavel_id == cs_id)
+    tarefas = tq.all()
+
+    # Nome do cliente (se a tarefa estiver ligada a um) para exibir no radar.
+    nomes = {}
+    ids = [t.cliente_id for t in tarefas if t.cliente_id]
+    if ids:
+        for cid, fname in db.query(models.Customer.id_datajuri, models.Customer.first_name).filter(
+            models.Customer.id_datajuri.in_(ids)
+        ).all():
+            nomes[cid] = fname
+
+    for t in tarefas:
+        if t.prazo is None:
+            horas = None
+            atrasado = True
+        else:
+            # prazo vence no fim do dia do prazo.
+            fim_do_dia = datetime(t.prazo.year, t.prazo.month, t.prazo.day) + timedelta(days=1)
+            restante = fim_do_dia - agora
+            horas = round(restante.total_seconds() / 3600, 1)
+            atrasado = restante.total_seconds() < 0
+        nome = nomes.get(t.cliente_id) or (t.detalhes[:40] if t.detalhes else "Tarefa")
+        itens.append({
+            "tipo": "tarefa",
+            "origem_radar": "tarefa da gestão" if t.origem == "manual" else "tarefa do sistema",
+            "tarefa_id": t.id,
+            "customer_id": t.cliente_id,
+            "nome": nome,
+            "criticidade": "Crítico",  # CRÍTICA/URGENTE → estilo de urgência máxima
+            "ultimo_contato": None,
+            "horas_restantes": horas,
+            "status": "Atrasado" if atrasado else "No prazo",
+        })
+
+    # Mais atrasado primeiro: horas None = -inf; depois horas crescente.
     itens.sort(key=lambda x: x["horas_restantes"] if x["horas_restantes"] is not None else float("-inf"))
     return itens
 

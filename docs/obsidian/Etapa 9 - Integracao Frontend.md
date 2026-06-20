@@ -79,7 +79,53 @@ tela de Monitoramento foi repontada de endpoints mortos (`/scan`, `/upload`) par
 A tela Quitações exigia "dados reais", mas só existia `POST .../quitar`. Foi
 adicionado um endpoint **read-only** `GET /api/quitacoes` (escopo por papel;
 `economia` e `percentual` calculados na resposta, nunca armazenados — ADR-3), com
-testes em `backend/tests/test_quitacoes.py`. Total da suíte: **89 testes**.
+testes em `backend/tests/test_quitacoes.py`.
+
+### Campo `pagamento` na quitação (texto livre)
+
+`quitacoes` ganhou a coluna **`pagamento`** (`String`, not null) — texto livre que
+o CS escreve à mão ("à vista", "10x de R$500,00"): **sem enum nem validação de
+formato**, só não pode ser vazio (o service `quitar` devolve **422** se vazio/None).
+Aparece no modal de quitar (AreaCS, obrigatório) e como coluna na tela Quitações.
+Não toca em comissão/bônus. Migração local: apagar `backend/database.db` →
+`create_all()` recria a tabela no próximo boot → rodar `demo_seed.py` de novo.
+
+### Status jurídico no CLIENTE (protesto / tarifas_restituiveis / consulta_processo)
+
+Estes três passaram a ser **atributos do `Customer`** (não da quitação), editáveis
+inline na tela Quitações:
+
+- `protesto` — `String`, enum `{"Sim", "Não possui", "Cliente ciente"}` (outro → 422).
+- `tarifas_restituiveis` — `Boolean` (select Sim/Não).
+- `consulta_processo` — `Boolean` (select Sim/Não — "processo consultado?").
+
+> ⚠️ **Nota de arquitetura:** o `Quitacao` da Etapa 1 já tinha colunas
+> homônimas (snapshots da quitação). Mantive-as intactas; as **novas** colunas
+> vivem no `Customer` e são a fonte editável. O `GET /api/quitacoes` passou a
+> retornar os valores **do Customer** (via join), não os da quitação.
+
+Edição reusa o **`PUT /api/clientes/{id}`** (atualização parcial; ownership:
+dono ou gestão, senão 403; `protesto` fora do enum → 422; booleanos só aceitam
+bool → 422). Na tela: três selects com **atualização otimista + revert + toast**,
+mesmo padrão do AreaCS.
+
+### Tarefas da gestão no Radar de Prioridades
+
+`prioridades` (em `GET /api/dashboard/stats`) agora **mescla** clientes em atraso
+**+** tarefas abertas `CRÍTICA/URGENTE` (origem `sistema` OU `manual`) do CS,
+ordenadas juntas pela urgência. Cada item traz `tipo` (`"cliente"`/`"tarefa"`) e
+`origem_radar` (`"cliente em atraso"` / `"tarefa da gestão"` / `"tarefa do
+sistema"`) — a tela mostra um ícone e rótulo distinto para a tarefa.
+
+### Sincronização Sidebar ⇄ telas (sem divergência de total)
+
+Sidebar e Dashboard consomem a **mesma** fonte (`/api/dashboard/stats`) e refazem
+o fetch a cada navegação (`useLocation`) e sempre que uma ação muda os dados, via
+um sinal pub/sub em `src/services/refresh.js` (`notifyDataChanged()` disparado
+pelo AreaCS/Quitações após cada mutação). Isso elimina o gráfico do rodapé do
+sidebar mostrar um total diferente da tela "Meus Clientes".
+
+Total da suíte após estas mudanças: **104 testes**.
 
 ## Como rodar o demo
 

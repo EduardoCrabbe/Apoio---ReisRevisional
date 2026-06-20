@@ -4,6 +4,7 @@ import {
   Users, UserPlus, PhoneForwarded, PieChart, Trash2, RotateCcw, Loader2,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { notifyDataChanged } from '../services/refresh';
 
 // Backend grava datetime UTC naive (sem 'Z'); o JS interpretaria como local.
 // Forçamos UTC para o timer de 72h ficar correto.
@@ -23,7 +24,7 @@ export default function AreaCS({ role }) {
   const [now, setNow] = useState(Date.now());
 
   const [modalQuitar, setModalQuitar] = useState(null);
-  const [dadosQuitar, setDadosQuitar] = useState({ valorOriginal: '', valorPago: '', dataBoleto: '', dataPagamento: '' });
+  const [dadosQuitar, setDadosQuitar] = useState({ valorOriginal: '', valorPago: '', pagamento: '', dataBoleto: '', dataPagamento: '' });
 
   const [modalNovoCliente, setModalNovoCliente] = useState(false);
   const [novoCliente, setNovoCliente] = useState({ id: '', nome: '', uf: 'SP', contrato: 'Veículo', tem_processo: 'Não', criticidade: 'Regular' });
@@ -61,6 +62,7 @@ export default function AreaCS({ role }) {
       const data = await api.post('/api/clientes/importar', formData);
       await fetchClientes();
       showToast(data.message || 'Planilha importada com sucesso!');
+      notifyDataChanged();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -78,6 +80,7 @@ export default function AreaCS({ role }) {
       await apiCall();
       await fetchClientes();
       if (okMsg) showToast(okMsg);
+      notifyDataChanged(); // Sidebar/Dashboard refazem o fetch dos totais
     } catch (err) {
       setClientes(anterior); // reverte
       showToast(err.message, 'error');
@@ -135,6 +138,7 @@ export default function AreaCS({ role }) {
       setNovoCliente({ id: '', nome: '', uf: 'SP', contrato: 'Veículo', tem_processo: 'Não', criticidade: 'Regular' });
       await fetchClientes();
       showToast('Cliente cadastrado.');
+      notifyDataChanged();
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -146,6 +150,7 @@ export default function AreaCS({ role }) {
       const data = await api.post('/api/clientes/reset-mensal');
       await fetchClientes();
       showToast(data.message || 'Reset mensal concluído.');
+      notifyDataChanged();
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -159,17 +164,23 @@ export default function AreaCS({ role }) {
       showToast('Informe os valores original e pago.', 'error');
       return;
     }
+    if (!dadosQuitar.pagamento.trim()) {
+      showToast('Informe a forma de pagamento.', 'error');
+      return;
+    }
     try {
       await api.post(`/api/clientes/${modalQuitar.id_datajuri}/quitar`, {
         valor_original: valorOriginal,
         valor_pago: valorPago,
+        pagamento: dadosQuitar.pagamento,
         data_boleto: dadosQuitar.dataBoleto || null,
         data_pagamento: dadosQuitar.dataPagamento || null,
       });
       setModalQuitar(null);
-      setDadosQuitar({ valorOriginal: '', valorPago: '', dataBoleto: '', dataPagamento: '' });
+      setDadosQuitar({ valorOriginal: '', valorPago: '', pagamento: '', dataBoleto: '', dataPagamento: '' });
       await fetchClientes();
       showToast('Contrato quitado com sucesso!');
+      notifyDataChanged();
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -400,6 +411,10 @@ export default function AreaCS({ role }) {
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Pagamento</label>
+                <input type="text" required value={dadosQuitar.pagamento} onChange={e => setDadosQuitar({ ...dadosQuitar, pagamento: e.target.value })} placeholder="Ex: à vista ou 10x de R$500,00" className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
                 <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Data do Envio do Boleto</label>
                 <input type="date" value={dadosQuitar.dataBoleto} onChange={e => setDadosQuitar({ ...dadosQuitar, dataBoleto: e.target.value })} className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-emerald-500" />
               </div>
@@ -409,7 +424,7 @@ export default function AreaCS({ role }) {
               </div>
               <div className="pt-2 flex gap-3">
                 <button type="button" onClick={() => setModalQuitar(null)} className="flex-1 bg-slate-100 text-slate-600 dark:text-slate-300 font-bold py-3 rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 bg-emerald-500 text-white font-bold py-3 rounded-xl hover:bg-emerald-600 shadow-md transition-colors">Confirmar Quitação</button>
+                <button type="submit" disabled={!dadosQuitar.pagamento.trim()} className="flex-1 bg-emerald-500 text-white font-bold py-3 rounded-xl hover:bg-emerald-600 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-500">Confirmar Quitação</button>
               </div>
             </form>
           </div>

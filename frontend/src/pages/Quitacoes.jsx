@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, FileText, Download, Calculator, Filter, Loader2 } from 'lucide-react';
+import { CheckCircle2, FileText, Download, Calculator, Filter, Loader2, AlertOctagon } from 'lucide-react';
 import { api } from '../services/api';
+import { notifyDataChanged } from '../services/refresh';
+
+const PROTESTO_OPCOES = ['Sim', 'Não possui', 'Cliente ciente'];
+const SELECT_CLS = 'text-xs border border-slate-200 dark:border-slate-700 rounded p-1 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none cursor-pointer font-bold';
 
 export default function Quitacoes({ role }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
@@ -8,22 +12,43 @@ export default function Quitacoes({ role }) {
   const [quitados, setQuitados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await api.get('/api/quitacoes');
-        setQuitados(Array.isArray(data) ? data : []);
-        setErro('');
-      } catch (e) {
-        setErro(e.message);
-        setQuitados([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000);
+  };
+
+  const fetchQuitacoes = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/api/quitacoes');
+      setQuitados(Array.isArray(data) ? data : []);
+      setErro('');
+    } catch (e) {
+      setErro(e.message);
+      setQuitados([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchQuitacoes(); }, []);
+
+  // Status jurídico é atributo do CLIENTE — edição inline via PUT /api/clientes/{id},
+  // otimista com revert + toast (mesmo padrão do AreaCS). Afeta todas as linhas
+  // do mesmo cliente.
+  const editarStatus = async (customerId, campo, valor) => {
+    const anterior = quitados;
+    setQuitados((prev) => prev.map((q) => (q.customer_id === customerId ? { ...q, [campo]: valor } : q)));
+    try {
+      await api.put(`/api/clientes/${customerId}`, { [campo]: valor });
+      notifyDataChanged();
+    } catch (e) {
+      setQuitados(anterior); // reverte
+      showToast(e.message, 'error');
+    }
+  };
 
   const csDisponiveis = [...new Set(quitados.map((q) => q.cs).filter(Boolean))];
   const quitadosVisiveis = (isManager && filtroCS !== 'Todos')
@@ -79,6 +104,7 @@ export default function Quitacoes({ role }) {
                 <th className="px-4 py-3 font-bold">Economia Gerada</th>
                 <th className="px-4 py-3 font-bold">Consulta Proc.</th>
                 <th className="px-4 py-3 font-bold">Datas (Boleto / Pgto)</th>
+                <th className="px-4 py-3 font-bold">Pagamento</th>
                 <th className="px-4 py-3 font-bold">Protesto</th>
                 <th className="px-4 py-3 font-bold">Tarifas Rest.</th>
                 <th className="px-4 py-3 font-bold text-center">Status</th>
@@ -99,13 +125,28 @@ export default function Quitacoes({ role }) {
                     <div className="text-sm font-bold text-emerald-600">{moeda(item.economia)}</div>
                     <div className="text-xs font-medium text-emerald-500/80 bg-emerald-50 inline-block px-2 rounded-full">{item.percentual}%</div>
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">{item.consulta_processo}</td>
+                  <td className="px-4 py-3">
+                    <select value={item.consulta_processo ? 'Sim' : 'Não'} onChange={(e) => editarStatus(item.customer_id, 'consulta_processo', e.target.value === 'Sim')} className={SELECT_CLS}>
+                      <option value="Sim">Sim</option>
+                      <option value="Não">Não</option>
+                    </select>
+                  </td>
                   <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
                     <div><span className="font-medium text-slate-400">Envio:</span> {fmtData(item.data_boleto)}</div>
                     <div><span className="font-medium text-slate-400">Pgto:</span> {fmtData(item.data_pagamento)}</div>
                   </td>
-                  <td className="px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">{item.protesto ? 'Cliente ciente' : 'Não possui'}</td>
-                  <td className="px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">{item.tarifas_restituiveis ? 'Sim' : 'Não'}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-brand-navy dark:text-slate-200">{item.pagamento || '—'}</td>
+                  <td className="px-4 py-3">
+                    <select value={PROTESTO_OPCOES.includes(item.protesto) ? item.protesto : 'Não possui'} onChange={(e) => editarStatus(item.customer_id, 'protesto', e.target.value)} className={SELECT_CLS}>
+                      {PROTESTO_OPCOES.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <select value={item.tarifas_restituiveis ? 'Sim' : 'Não'} onChange={(e) => editarStatus(item.customer_id, 'tarifas_restituiveis', e.target.value === 'Sim')} className={SELECT_CLS}>
+                      <option value="Sim">Sim</option>
+                      <option value="Não">Não</option>
+                    </select>
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded-full"><CheckCircle2 className="w-3 h-3" /> Quitado</span>
                   </td>
@@ -124,7 +165,7 @@ export default function Quitacoes({ role }) {
                     <div className="text-sm font-bold text-emerald-600">{moeda(totalEconomia)}</div>
                     <div className="text-xs font-bold text-white bg-emerald-500 inline-block px-2 py-0.5 rounded-full">{totalEconomiaPct}% Global</div>
                   </td>
-                  <td colSpan={5} className="px-4 py-4 text-xs text-slate-500 dark:text-slate-400 text-right">Mostrando {quitadosVisiveis.length} quitação(ões).</td>
+                  <td colSpan={6} className="px-4 py-4 text-xs text-slate-500 dark:text-slate-400 text-right">Mostrando {quitadosVisiveis.length} quitação(ões).</td>
                 </tr>
               </tfoot>
             )}
@@ -138,6 +179,13 @@ export default function Quitacoes({ role }) {
           </div>
         )}
       </div>
+
+      {toast.show && (
+        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+          {toast.type === 'error' ? <AlertOctagon className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+          <span className="font-medium text-sm">{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }

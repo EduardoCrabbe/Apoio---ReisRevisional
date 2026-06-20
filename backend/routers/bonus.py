@@ -28,6 +28,7 @@ class BonusIn(BaseModel):
     # consegue influenciar o valor (e nem recebe erro por tentar).
     customer_id: str
     tipo: str
+    cs_id: Optional[int] = None  # override de CS — só a gestão pode usar (ver abaixo)
 
 
 class BonusOut(BaseModel):
@@ -66,14 +67,27 @@ def lancar_bonus(
     if db.query(models.CommissionTable).filter_by(acao=payload.tipo).first() is None:
         raise HTTPException(422, f"Tipo de bônus inexistente: {payload.tipo!r}.")
 
-    # O nível (e o crédito) são do CS DONO do cliente — nunca do gestor logado.
-    dono = db.get(models.User, cliente.cs_id) if cliente.cs_id is not None else None
-    if dono is None or dono.level_cs is None:
+    # Quem RECEBE o crédito (e cujo nível define o valor):
+    if user.role == "CS":
+        # CS comum NUNCA redireciona bônus: cs_id do body é ignorado, força a si
+        # mesmo (e já passou pelo 403 de cliente alheio em exigir_pode_editar).
+        alvo = user
+    elif payload.cs_id is not None:
+        # Override da gestão: credita o CS escolhido (não precisa ser o dono),
+        # usando o NÍVEL DELE. Precisa existir e estar ativo.
+        alvo = db.get(models.User, payload.cs_id)
+        if alvo is None or not alvo.ativo or alvo.role != "CS":
+            raise HTTPException(404, "CS informado não existe ou está inativo.")
+    else:
+        # Gestão sem override: comportamento da Etapa 4 — o CS DONO do cliente.
+        alvo = db.get(models.User, cliente.cs_id) if cliente.cs_id is not None else None
+
+    if alvo is None or alvo.level_cs is None:
         raise HTTPException(400, "Cliente sem CS dono com nível definido para calcular o bônus.")
 
-    valor = get_price(dono.level_cs, payload.tipo, db)
+    valor = get_price(alvo.level_cs, payload.tipo, db)       # valor SEMPRE do servidor
     bonus = models.BonusEntry(
-        user_id=dono.id,
+        user_id=alvo.id,
         customer_id=cliente.id_datajuri,
         tipo=payload.tipo,
         valor=valor,                # CONGELADO no lançamento

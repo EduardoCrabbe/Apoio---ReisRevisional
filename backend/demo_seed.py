@@ -140,6 +140,19 @@ def main():
                 contatos=contatos, ultimo_contato=uc,
             )
 
+        # Status jurídico de exemplo nos clientes (aparece na tela Quitações).
+        for cid, prot, tarifas, consulta in [
+            ("100205", "Cliente ciente", True, True),
+            ("100303", "Sim", False, True),
+            ("10683", "Não possui", False, False),
+        ]:
+            cc = db.get(models.Customer, cid)
+            if cc is not None:
+                cc.protesto = prot
+                cc.tarifas_restituiveis = tarifas
+                cc.consulta_processo = consulta
+        db.commit()
+
         # Atendimentos congelados (alimentam ganhos do mês) — só se ainda não houver.
         if db.query(models.Attendance).count() == 0:
             for cid, uid, val in [("11839", eduardo.id, 1.0), ("11839", eduardo.id, 1.0),
@@ -147,17 +160,27 @@ def main():
                 db.add(models.Attendance(user_id=uid, customer_id=cid, timestamp=agora, commission_value=val))
             db.commit()
 
-        # Uma quitação (com bônus congelado) p/ a tela Quitações não ficar vazia.
+        # Quitações de demo (com bônus congelado) p/ a tela não ficar vazia.
+        # 'pagamento' é texto livre — duas formas diferentes p/ aparecer no demo.
         if db.query(models.Quitacao).count() == 0:
             db.add(models.Quitacao(
                 customer_id="100205", cs_id=eduardo.id,
                 valor_original=42000.0, valor_pago=15000.0,
                 consulta_processo="Ativa", protesto=False, tarifas_restituiveis=True,
+                pagamento="À vista",
                 mes_referencia=agora.strftime("%Y-%m"),
                 data_boleto=agora.date(), data_pagamento=agora.date(),
             ))
             db.add(models.BonusEntry(user_id=eduardo.id, customer_id="100205",
                                      tipo="Quitacao", valor=5.0, timestamp=agora))
+            db.add(models.Quitacao(
+                customer_id="100303", cs_id=ana.id,
+                valor_original=12000.0, valor_pago=7000.0,
+                consulta_processo="Excluída", protesto=False, tarifas_restituiveis=False,
+                pagamento="10x de R$500,00",
+                mes_referencia=agora.strftime("%Y-%m"),
+                data_boleto=agora.date(), data_pagamento=agora.date(),
+            ))
             db.commit()
 
         # 🚨 O momento cross-produto: alerta vermelho do robô + tarefa crítica.
@@ -185,6 +208,22 @@ def main():
             ))
             db.commit()
             _criar_tarefa_alerta(db, cliente_alerta)
+
+        # Tarefa CRÍTICA/URGENTE criada pela GESTÃO para o CS (valida o item 5:
+        # aparece no Radar de Prioridades do CS dono, marcada como "tarefa da gestão").
+        if db.query(models.Tarefa).filter_by(origem="manual", classificacao="CRÍTICA/URGENTE").first() is None:
+            db.add(models.Tarefa(
+                criador_id=gerente.id,
+                responsavel_id=eduardo.id,
+                cliente_id="12175",
+                setor="Gestão",
+                classificacao="CRÍTICA/URGENTE",
+                origem="manual",
+                prazo=agora.date(),
+                detalhes="Gestão: priorizar contato com Marcos hoje (renegociação urgente).",
+                concluida=False,
+            ))
+            db.commit()
 
         print("OK — demo_seed concluído.")
         print(f"  Usuários: {db.query(models.User).count()} | "

@@ -187,6 +187,10 @@ def quitar(db: Session, cliente: models.Customer, user: models.User, dados):
             status.HTTP_400_BAD_REQUEST,
             "valor_pago não pode ser maior que valor_original.",
         )
+    # pagamento é texto livre (ex.: "à vista", "10x de R$500,00"); só não pode
+    # ser vazio. Nenhum parsing/validação de formato — guarda como veio.
+    if not (dados.pagamento and dados.pagamento.strip()):
+        raise HTTPException(422, "O campo 'pagamento' é obrigatório.")
     nivel = _exigir_nivel_cs(user)
     quitacao = models.Quitacao(
         customer_id=cliente.id_datajuri,
@@ -198,6 +202,7 @@ def quitar(db: Session, cliente: models.Customer, user: models.User, dados):
         consulta_processo=dados.consulta_processo,
         protesto=dados.protesto,
         tarifas_restituiveis=dados.tarifas_restituiveis,
+        pagamento=dados.pagamento,
         mes_referencia=dados.mes_referencia or agora_utc().strftime("%Y-%m"),
     )
     db.add(quitacao)

@@ -38,8 +38,10 @@ def listar_quitacoes(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    # protesto / tarifas_restituiveis / consulta_processo são atributos do CLIENTE
+    # (editáveis na tela Quitações) — vêm do Customer via join, não da quitação.
     q = (
-        db.query(models.Quitacao, models.User.nome_exibicao, models.Customer.first_name)
+        db.query(models.Quitacao, models.User.nome_exibicao, models.Customer)
         .join(models.User, models.User.id == models.Quitacao.cs_id)
         .outerjoin(models.Customer, models.Customer.id_datajuri == models.Quitacao.customer_id)
     )
@@ -57,23 +59,25 @@ def listar_quitacoes(
     q = q.order_by(models.Quitacao.id.desc())
 
     saida = []
-    for quitacao, nome_cs, nome_cliente in q.all():
+    for quitacao, nome_cs, customer in q.all():
         economia = quitacao.valor_original - quitacao.valor_pago
         percentual = round(economia / quitacao.valor_original * 100, 1) if quitacao.valor_original else 0.0
         saida.append({
             "id": quitacao.id,
             "customer_id": quitacao.customer_id,
-            "cliente": nome_cliente,
+            "cliente": customer.first_name if customer else None,
             "cs": nome_cs,
             "valor_original": quitacao.valor_original,
             "valor_pago": quitacao.valor_pago,
             "economia": economia,
             "percentual": percentual,
-            "consulta_processo": quitacao.consulta_processo,
             "data_boleto": quitacao.data_boleto,
             "data_pagamento": quitacao.data_pagamento,
-            "protesto": quitacao.protesto,
-            "tarifas_restituiveis": quitacao.tarifas_restituiveis,
+            "pagamento": quitacao.pagamento,
             "mes_referencia": quitacao.mes_referencia,
+            # Status jurídico do CLIENTE (Customer), editável inline na tela:
+            "protesto": customer.protesto if customer else "Não possui",
+            "tarifas_restituiveis": customer.tarifas_restituiveis if customer else False,
+            "consulta_processo": customer.consulta_processo if customer else False,
         })
     return saida

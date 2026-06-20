@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AlertTriangle, CheckCircle2, Calendar as CalendarIcon, Clock, AlertCircle,
-  RefreshCw, PhoneForwarded, DollarSign, BellRing, PieChart, Trash2,
+  RefreshCw, PhoneForwarded, DollarSign, BellRing, PieChart, Trash2, ClipboardList,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { onDataChanged } from '../services/refresh';
 
 const STATS_VAZIO = {
   totalAtivos: 0, atendidos: 0, tentativas: 0, naoAtendidos: 0,
@@ -15,6 +16,7 @@ const STATS_VAZIO = {
 export default function Dashboard({ role }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [stats, setStats] = useState(STATS_VAZIO);
   const [tarefas, setTarefas] = useState([]);
@@ -52,13 +54,19 @@ export default function Dashboard({ role }) {
     }
   };
 
+  // Refaz o fetch a cada visita da rota (item 1: total não fica preso no valor
+  // antigo após criar CS/clientes) e periodicamente para os alertas.
   useEffect(() => {
     fetchStats();
     fetchTarefas();
     fetchAlertas();
     const interval = setInterval(fetchAlertas, 60000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // E também quando qualquer ação muda os dados (mesma fonte da Sidebar).
+  useEffect(() => onDataChanged(() => { fetchStats(); fetchTarefas(); fetchAlertas(); }), []);
 
   const handleAddTarefa = async (e) => {
     e.preventDefault();
@@ -219,7 +227,7 @@ export default function Dashboard({ role }) {
             <AlertTriangle className="w-5 h-5 text-red-500" />
             Radar de Prioridades
           </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Clientes que exigem retorno Semanal ou Quinzenal.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Clientes em atraso e tarefas críticas da gestão.</p>
 
           <div className="space-y-3">
             {(!stats.prioridades || stats.prioridades.length === 0) ? (
@@ -228,6 +236,7 @@ export default function Dashboard({ role }) {
               </div>
             ) : (
               stats.prioridades.map((item) => {
+                const isTarefa = item.tipo === 'tarefa';
                 const atrasado = item.status === 'Atrasado' || item.horas_restantes === null;
                 let statusText;
                 if (atrasado) {
@@ -240,14 +249,22 @@ export default function Dashboard({ role }) {
                 }
                 const borderColor = item.criticidade === 'Crítico' ? 'border-l-red-500' : 'border-l-amber-500';
                 const statusColor = atrasado ? 'text-red-500 dark:text-red-400' : 'text-emerald-500 dark:text-emerald-400';
+                const key = isTarefa ? `t-${item.tarefa_id}` : `c-${item.customer_id}`;
 
                 return (
-                  <div key={item.customer_id} className={`bg-white dark:bg-[#112240] p-4 rounded-xl shadow-sm border-l-4 ${borderColor} border-t border-r border-b border-slate-100 dark:border-slate-800 flex justify-between items-center`}>
+                  <div key={key} className={`bg-white dark:bg-[#112240] p-4 rounded-xl shadow-sm border-l-4 ${borderColor} border-t border-r border-b border-slate-100 dark:border-slate-800 flex justify-between items-center`}>
                     <div>
-                      <h4 className="font-bold text-brand-navy dark:text-white">{item.nome}</h4>
-                      <span className={`text-xs font-bold uppercase ${item.criticidade === 'Crítico' ? 'text-red-500' : 'text-amber-500'}`}>
-                        {item.criticidade} ({item.criticidade === 'Crítico' ? 'Semanal' : 'Quinzenal'})
-                      </span>
+                      <h4 className="font-bold text-brand-navy dark:text-white flex items-center gap-1.5">
+                        {isTarefa && <ClipboardList className="w-4 h-4 text-indigo-500" />}
+                        {item.nome}
+                      </h4>
+                      {isTarefa ? (
+                        <span className="text-xs font-bold uppercase text-indigo-500">{item.origem_radar}</span>
+                      ) : (
+                        <span className={`text-xs font-bold uppercase ${item.criticidade === 'Crítico' ? 'text-red-500' : 'text-amber-500'}`}>
+                          {item.criticidade} ({item.criticidade === 'Crítico' ? 'Semanal' : 'Quinzenal'})
+                        </span>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className={`text-sm font-black ${statusColor}`}>{statusText}</div>

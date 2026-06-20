@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, Star, MessageSquare, Image as ImageIcon, Video, History, CheckCircle, AlertOctagon } from 'lucide-react';
+import { PlusCircle, Star, MessageSquare, Image as ImageIcon, Video, History, CheckCircle, AlertOctagon, UserPlus, X } from 'lucide-react';
 import { api } from '../services/api';
 
 // Rótulos/ícones amigáveis para as ações da commission_table (a ação "Atendimento"
@@ -22,6 +22,13 @@ export default function Bonus({ role, user }) {
   const [form, setForm] = useState({ customer_id: '', tipo: 'Quitacao' });
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+  // Estado do lançamento pela GESTÃO (modal): cliente de toda a base + CS que recebe.
+  const [modalGestao, setModalGestao] = useState(false);
+  const [clientesBase, setClientesBase] = useState([]);
+  const [csAtivos, setCsAtivos] = useState([]);
+  const [formGestao, setFormGestao] = useState({ customer_id: '', cs_id: '', tipo: 'Quitacao' });
+  const [salvando, setSalvando] = useState(false);
+
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000);
@@ -35,6 +42,36 @@ export default function Bonus({ role, user }) {
   };
 
   useEffect(() => { fetchTabela(); fetchExtrato(); }, []);
+
+  // A gestão precisa da base inteira de clientes e da lista de CS para o override.
+  useEffect(() => {
+    if (!isManager) return;
+    api.get('/api/clientes').then((d) => setClientesBase(Array.isArray(d) ? d : [])).catch(() => {});
+    api.get('/api/equipe').then((d) => setCsAtivos(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [isManager]);
+
+  const handleLancarGestao = async () => {
+    if (!formGestao.customer_id || !formGestao.cs_id) {
+      showToast('Selecione o cliente e o CS que recebe o crédito.', 'error');
+      return;
+    }
+    setSalvando(true);
+    try {
+      await api.post('/api/bonus', {
+        customer_id: formGestao.customer_id,
+        cs_id: Number(formGestao.cs_id),
+        tipo: formGestao.tipo,
+      });
+      setModalGestao(false);
+      setFormGestao({ customer_id: '', cs_id: '', tipo: 'Quitacao' });
+      await fetchExtrato();
+      showToast('Bônus creditado ao CS escolhido!');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   const valorDe = (acao) => {
     const regra = tabela.find((t) => t.acao === acao);
@@ -66,9 +103,20 @@ export default function Bonus({ role, user }) {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h2 className="text-3xl font-bold text-brand-navy dark:text-white">Bônus & Comissões</h2>
-        <p className="text-brand-bronze mt-1">Lançamento de comissões por metas. Valores vêm da tabela oficial (Nível {nivel}).</p>
+      <header className="flex justify-between items-start gap-4">
+        <div>
+          <h2 className="text-3xl font-bold text-brand-navy dark:text-white">Bônus & Comissões</h2>
+          <p className="text-brand-bronze mt-1">
+            {isManager
+              ? 'Lançamento de comissões por metas. Valores sempre da tabela oficial.'
+              : `Lançamento de comissões por metas. Valores vêm da tabela oficial (Nível ${nivel}).`}
+          </p>
+        </div>
+        {isManager && (
+          <button onClick={() => setModalGestao(true)} className="bg-brand-navy text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-blue-900 flex items-center gap-2 transition-colors whitespace-nowrap">
+            <UserPlus className="w-5 h-5 text-brand-gold" /> Adicionar Bônus
+          </button>
+        )}
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -146,6 +194,51 @@ export default function Bonus({ role, user }) {
         <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
           {toast.type === 'error' ? <AlertOctagon className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
           <span className="font-medium text-sm">{toast.message}</span>
+        </div>
+      )}
+
+      {/* Modal da GESTÃO: lança bônus escolhendo o cliente (base toda) e o CS que recebe. */}
+      {isManager && modalGestao && (
+        <div className="fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="bg-brand-cream dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700 p-4 flex justify-between items-center">
+              <h3 className="font-bold text-brand-navy dark:text-white text-lg flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-brand-gold" /> Adicionar Bônus (gestão)
+              </h3>
+              <button onClick={() => setModalGestao(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-300"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Cliente (toda a base)</label>
+                <select value={formGestao.customer_id} onChange={(e) => setFormGestao({ ...formGestao, customer_id: e.target.value })} className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#112240] dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-brand-navy cursor-pointer">
+                  <option value="">Selecione o cliente...</option>
+                  {clientesBase.map((c) => (
+                    <option key={c.id_datajuri} value={c.id_datajuri}>{c.first_name} — {c.id_datajuri}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">CS que recebe o crédito</label>
+                <select value={formGestao.cs_id} onChange={(e) => setFormGestao({ ...formGestao, cs_id: e.target.value })} className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#112240] dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-brand-navy cursor-pointer">
+                  <option value="">Selecione o CS...</option>
+                  {csAtivos.map((cs) => (
+                    <option key={cs.cs_id} value={cs.cs_id}>{cs.nome} (Nível {cs.nivel})</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">Independe do dono do cliente — o valor usa o nível deste CS.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1">Ação</label>
+                <select value={formGestao.tipo} onChange={(e) => setFormGestao({ ...formGestao, tipo: e.target.value })} className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#112240] dark:text-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:border-brand-navy cursor-pointer">
+                  {tiposBonus.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </select>
+              </div>
+              <div className="pt-2 flex gap-3">
+                <button type="button" onClick={() => setModalGestao(false)} className="flex-1 bg-slate-100 text-slate-600 dark:text-slate-300 dark:bg-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">Cancelar</button>
+                <button type="button" disabled={salvando} onClick={handleLancarGestao} className="flex-1 bg-brand-navy text-white font-bold py-3 rounded-xl hover:bg-blue-900 shadow-md transition-colors disabled:opacity-60">{salvando ? 'Lançando...' : 'Confirmar'}</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -14,6 +14,7 @@ orientação do PROMPT_MESTRE: "escolha a opção mais simples e documente").
   - `protesto` → `Boolean` (default `False`) — interpretado como "houve protesto?".
   - `tarifas_restituiveis` → `Boolean` (default `False`) — flag Sim/Não indicando
     se há tarifas passíveis de restituição (não é valor monetário).
+    **⚠️ Revisado na Etapa 9 — ver abaixo.**
   - `data_boleto` / `data_pagamento` → `Date` (datas de calendário).
   - `mes_referencia` → `String` no formato `"AAAA-MM"`.
 
@@ -63,3 +64,20 @@ orientação do PROMPT_MESTRE: "escolha a opção mais simples e documente").
   (colisão de nome com o novo pacote `backend/auth/`). Sua lógica de
   register/login foi reimplementada no pacote, com JWT; o original está no
   histórico git.
+
+## Etapa 9 — Frontend e status jurídico (2026-06-20)
+
+- **`Customer.tarifas_restituiveis` é a fonte ÚNICA de verdade.** Na Etapa 9 o
+  "status jurídico" (protesto, tarifas restituíveis, consulta de processo) passou
+  a ser **atributo do cliente** (`Customer`), editável inline na tela Quitações via
+  `PUT /api/clientes/{id}`; o `GET /api/quitacoes` retorna esses valores via join
+  com `Customer`.
+  - A coluna homônima **`Quitacao.tarifas_restituiveis`** (Etapa 1) ficou
+    **DEPRECATED**: ainda é *escrita* por `quitar()`/`demo_seed` como snapshot
+    histórico, mas **não é lida nem exibida em lugar nenhum** (auditoria de uso
+    feita na Etapa 9: nenhuma rota/frontend/seed a consome para leitura). Marcada
+    com comentário no model; **não removida** para evitar migração e preservar os
+    snapshots/lançamentos já gravados.
+  - As irmãs `Quitacao.protesto` e `Quitacao.consulta_processo` estão na mesma
+    situação (escritas, nunca lidas) — mantidas como estão por ora, à espera de
+    decisão conjunta antes de deprecar/remover.

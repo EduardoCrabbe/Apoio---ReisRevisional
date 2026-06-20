@@ -98,6 +98,53 @@ def test_gestor_lanca_usa_nivel_do_dono(client, db):
     assert bonus.user_id == cs1.id  # creditado ao CS dono
 
 
+# ----------------------------------- override de CS pela gestão (Etapa 9)
+
+def test_gestor_com_cs_id_credita_o_escolhido_com_nivel_dele(client, db):
+    dono = criar_usuario(db, "CS", 1, "dono")      # dono do cliente, nível 1
+    outro = criar_usuario(db, "CS", 3, "outro")    # CS escolhido, nível 3
+    gerente = criar_usuario(db, "Gerente", None, "ger")
+    criar_cliente(db, "C1", dono.id)
+
+    r = lancar(client, gerente, "C1", "VideoDepoimento", extra={"cs_id": outro.id})
+    assert r.status_code == 201, r.text
+    assert r.json()["valor"] == 20.00  # nível 3 do CS escolhido, NÃO o nível 1 do dono
+    bonus = db.query(models.BonusEntry).filter_by(customer_id="C1").first()
+    assert bonus.user_id == outro.id   # creditado ao CS escolhido, não ao dono
+
+
+def test_gestor_com_cs_id_inexistente_retorna_404(client, db):
+    dono = criar_usuario(db, "CS", 1, "dono")
+    gerente = criar_usuario(db, "Gerente", None, "ger")
+    criar_cliente(db, "C1", dono.id)
+    r = lancar(client, gerente, "C1", "VideoDepoimento", extra={"cs_id": 99999})
+    assert r.status_code == 404
+
+
+def test_gestor_com_cs_id_inativo_retorna_404(client, db):
+    dono = criar_usuario(db, "CS", 1, "dono")
+    inativo = criar_usuario(db, "CS", 2, "inativo")
+    inativo.ativo = False
+    db.commit()
+    gerente = criar_usuario(db, "Gerente", None, "ger")
+    criar_cliente(db, "C1", dono.id)
+    r = lancar(client, gerente, "C1", "VideoDepoimento", extra={"cs_id": inativo.id})
+    assert r.status_code == 404
+
+
+def test_cs_nao_pode_redirecionar_bonus_via_cs_id(client, db):
+    cs1 = criar_usuario(db, "CS", 1, "cs1")        # dono e chamador
+    cs2 = criar_usuario(db, "CS", 3, "cs2")        # alvo tentado no body
+    criar_cliente(db, "C1", cs1.id)
+
+    # CS1 tenta creditar o CS2 — o cs_id do body é IGNORADO.
+    r = lancar(client, cs1, "C1", "VideoDepoimento", extra={"cs_id": cs2.id})
+    assert r.status_code == 201, r.text
+    assert r.json()["valor"] == 15.00  # nível 1 do próprio cs1, não o 3 do cs2
+    bonus = db.query(models.BonusEntry).filter_by(customer_id="C1").first()
+    assert bonus.user_id == cs1.id     # creditado a si mesmo, nunca ao outro
+
+
 # ---------------------------------------------------------------- validações
 
 def test_tipo_inexistente_retorna_422(client, db):

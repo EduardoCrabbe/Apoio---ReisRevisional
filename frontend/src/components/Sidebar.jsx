@@ -1,22 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Users, LayoutDashboard, Settings, LogOut, Activity, Trophy, Moon, Sun, Siren } from 'lucide-react';
 import clsx from 'clsx';
 import { api } from '../services/api';
+import { onDataChanged } from '../services/refresh';
 
 export default function Sidebar({ role, user, isDarkMode, toggleDarkMode, onLogout }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
   const displayName = user?.nome_exibicao || user?.email?.split('@')[0] || (isManager ? 'Gerente' : 'CS');
 
   const [stats, setStats] = useState(null);
+  const location = useLocation();
 
-  useEffect(() => {
+  // Mesma fonte do Dashboard (/api/dashboard/stats). Refaz o fetch a cada
+  // navegação e sempre que algum dado muda (notifyDataChanged) — assim o gráfico
+  // do rodapé não diverge do total da tela "Meus Clientes".
+  const fetchStats = useCallback(() => {
     if (!isManager) {
       api.get('/api/dashboard/stats')
         .then(setStats)
         .catch((e) => console.error('Erro ao buscar stats para a sidebar', e));
     }
   }, [isManager]);
+
+  useEffect(() => { fetchStats(); }, [fetchStats, location.pathname]);
+  useEffect(() => onDataChanged(fetchStats), [fetchStats]);
 
   const totalChart = stats ? (stats.atendidos + stats.naoAtendidos + stats.tentativas) : 0;
   const p1 = totalChart > 0 ? (stats.atendidos / totalChart) * 100 : 0;

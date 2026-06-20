@@ -197,7 +197,7 @@ def test_quitar_lanca_bonus_automatico_e_calcula_economia(client, db):
     c = criar_cliente(db, "C1", cs_id=cs.id)
     r = client.post(
         "/api/clientes/C1/quitar",
-        json={"valor_original": 10000, "valor_pago": 6000, "mes_referencia": "2026-06"},
+        json={"valor_original": 10000, "valor_pago": 6000, "pagamento": "à vista", "mes_referencia": "2026-06"},
         headers=headers(cs),
     )
     assert r.status_code == 200, r.text
@@ -211,6 +211,71 @@ def test_quitar_lanca_bonus_automatico_e_calcula_economia(client, db):
     assert bonus[0].valor == 5.0  # get_price(2,"Quitacao")
     db.refresh(c)
     assert c.status == "Quitado"
+
+
+def test_quitar_sem_pagamento_retorna_422(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    # sem campo pagamento
+    r1 = client.post("/api/clientes/C1/quitar",
+                     json={"valor_original": 1000, "valor_pago": 500}, headers=headers(cs))
+    assert r1.status_code == 422
+    # pagamento vazio/whitespace também é 422
+    r2 = client.post("/api/clientes/C1/quitar",
+                     json={"valor_original": 1000, "valor_pago": 500, "pagamento": "   "}, headers=headers(cs))
+    assert r2.status_code == 422
+
+
+@pytest.mark.parametrize("texto", ["à vista", "10x de R$500,00"])
+def test_quitar_com_pagamento_salva_como_veio(client, db, texto):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    r = client.post("/api/clientes/C1/quitar",
+                    json={"valor_original": 1000, "valor_pago": 500, "pagamento": texto},
+                    headers=headers(cs))
+    assert r.status_code == 200, r.text
+    salvo = db.query(models.Quitacao).filter_by(customer_id="C1").first()
+    assert salvo.pagamento == texto  # sem parsing/normalização — guardado literal
+
+
+# ----------------------------------- status jurídico do cliente (item 4)
+
+def test_put_protesto_invalido_retorna_422(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    r = client.put("/api/clientes/C1", json={"protesto": "Talvez"}, headers=headers(cs))
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("valor", ["Sim", "Não possui", "Cliente ciente"])
+def test_put_protesto_valores_validos(client, db, valor):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    r = client.put("/api/clientes/C1", json={"protesto": valor}, headers=headers(cs))
+    assert r.status_code == 200, r.text
+    assert r.json()["protesto"] == valor
+
+
+def test_put_booleanos_status_juridico(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    r = client.put("/api/clientes/C1",
+                   json={"tarifas_restituiveis": True, "consulta_processo": False},
+                   headers=headers(cs))
+    assert r.status_code == 200
+    assert r.json()["tarifas_restituiveis"] is True
+    assert r.json()["consulta_processo"] is False
+    # valor não-booleano é rejeitado (422)
+    r2 = client.put("/api/clientes/C1", json={"tarifas_restituiveis": "talvez"}, headers=headers(cs))
+    assert r2.status_code == 422
+
+
+def test_put_status_juridico_outro_cs_403(client, db):
+    cs1 = criar_usuario(db, "CS", level_cs=2, sufixo="cs1")
+    cs2 = criar_usuario(db, "CS", level_cs=2, sufixo="cs2")
+    criar_cliente(db, "C1", cs_id=cs1.id)
+    r = client.put("/api/clientes/C1", json={"protesto": "Sim"}, headers=headers(cs2))
+    assert r.status_code == 403
 
 
 # ------------------------------------------------------------------ reset mensal

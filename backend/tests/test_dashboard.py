@@ -128,6 +128,65 @@ def test_radar_critico_atrasado_e_regular_ausente(client, db):
     assert crit["status"] == "Atrasado"
 
 
+# ----------------------------------- item 1: gestão conta TODOS os ativos
+
+def test_dashboard_gestao_conta_todos_os_ativos(client, db):
+    gerente = criar_usuario(db, "Gerente", None, "ger")
+    cs1 = criar_usuario(db, "CS", 2, "cs1")
+    cs2 = criar_usuario(db, "CS", 2, "cs2")
+    criar_cliente(db, "A1", cs1.id, contatos=1)
+    criar_cliente(db, "A2", cs2.id)
+    criar_cliente(db, "Q1", cs2.id, status="Quitado")  # quitado não conta
+
+    d = client.get("/api/dashboard/stats", headers=headers(gerente)).json()
+    assert d["totalAtivos"] == 2  # agregado de TODOS os CS, exclui o Quitado
+
+
+# ----------------------------------- item 5: tarefas no Radar de Prioridades
+
+def _tarefa(db, criador, responsavel, classificacao, origem="manual", cliente_id=None,
+            concluida=False):
+    t = models.Tarefa(criador_id=criador, responsavel_id=responsavel, cliente_id=cliente_id,
+                      setor="Gestão", classificacao=classificacao, origem=origem,
+                      prazo=_utcnow().date(), detalhes="tarefa x", concluida=concluida)
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t
+
+
+def test_radar_inclui_tarefa_critica_da_gestao(client, db):
+    ger = criar_usuario(db, "Gerente", None, "ger")
+    cs = criar_usuario(db, "CS", 2, "cs1")
+    _tarefa(db, ger.id, cs.id, "CRÍTICA/URGENTE", origem="manual")
+
+    prioridades = client.get("/api/dashboard/stats", headers=headers(cs)).json()["prioridades"]
+    tarefas = [p for p in prioridades if p["tipo"] == "tarefa"]
+    assert len(tarefas) == 1
+    assert tarefas[0]["origem_radar"] == "tarefa da gestão"
+
+
+def test_radar_ignora_tarefa_regular_e_lembrete(client, db):
+    ger = criar_usuario(db, "Gerente", None, "ger")
+    cs = criar_usuario(db, "CS", 2, "cs1")
+    _tarefa(db, ger.id, cs.id, "REGULAR")
+    _tarefa(db, ger.id, cs.id, "LEMBRETE")
+
+    prioridades = client.get("/api/dashboard/stats", headers=headers(cs)).json()["prioridades"]
+    assert [p for p in prioridades if p["tipo"] == "tarefa"] == []
+
+
+def test_radar_remove_tarefa_concluida(client, db):
+    ger = criar_usuario(db, "Gerente", None, "ger")
+    cs = criar_usuario(db, "CS", 2, "cs1")
+    t = _tarefa(db, ger.id, cs.id, "CRÍTICA/URGENTE")
+    t.concluida = True
+    db.commit()
+
+    prioridades = client.get("/api/dashboard/stats", headers=headers(cs)).json()["prioridades"]
+    assert [p for p in prioridades if p["tipo"] == "tarefa"] == []
+
+
 # --------------------------------------------------------------------- equipe
 
 def test_cs_no_get_equipe_recebe_403(client, db):

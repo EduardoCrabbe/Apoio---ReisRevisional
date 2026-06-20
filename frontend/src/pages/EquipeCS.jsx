@@ -75,8 +75,13 @@ export default function EquipeCS() {
   };
 
   const tamanho = equipe.length;
+  // Totais agregados a partir das linhas JÁ carregadas (sem nova chamada à API).
+  const totalClientes = equipe.reduce((acc, c) => acc + (c.totalClientes || 0), 0);
   const totalAtendimentos = equipe.reduce((acc, c) => acc + (c.atendidos || 0), 0);
+  const totalFaltam = equipe.reduce((acc, c) => acc + (c.faltam || 0), 0);
+  const totalQuitacoes = equipe.reduce((acc, c) => acc + (c.quitacoesMes || 0), 0);
   const totalGanhos = equipe.reduce((acc, c) => acc + (c.ganhosMes || 0), 0);
+  const pct = (parte) => (totalClientes > 0 ? Math.round((parte / totalClientes) * 100) : 0);
   const fmt = (v) => `R$ ${(v || 0).toFixed(2)}`;
 
   return (
@@ -140,13 +145,28 @@ export default function EquipeCS() {
                   <td className="px-6 py-4 text-sm text-emerald-600 font-bold text-center">{cs.atendidos} <span className="text-xs font-normal text-emerald-500/70">({cs.atendidosPct}%)</span></td>
                   <td className="px-6 py-4 text-sm text-red-500 font-bold text-center">{cs.faltam} <span className="text-xs font-normal text-red-400/70">({cs.faltamPct}%)</span></td>
                   <td className="px-6 py-4 text-sm font-bold text-indigo-600 text-center">{cs.quitacoesMes}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-brand-navy dark:text-white text-right">{fmt(cs.ganhosMes)}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-brand-navy text-right">{fmt(cs.ganhosMes)}</td>
                   <td className="px-6 py-4 text-right">
                     <button onClick={() => handleDelete(cs.cs_id)} className="text-red-400 hover:text-red-600 transition-colors p-1" title="Desativar CS"><Trash2 className="w-5 h-5" /></button>
                   </td>
                 </tr>
               ))}
             </tbody>
+            <tfoot className="bg-slate-50 border-t-2 border-slate-300">
+              <tr className="text-brand-navy font-bold">
+                <td className="px-6 py-4 text-sm" colSpan={2}>TOTAL DA EQUIPE</td>
+                <td className="px-6 py-4 text-sm text-center">{totalClientes}</td>
+                <td className="px-6 py-4 text-sm text-center text-emerald-700">
+                  {totalAtendimentos} <span className="text-xs font-normal text-emerald-600/70">({pct(totalAtendimentos)}%)</span>
+                </td>
+                <td className="px-6 py-4 text-sm text-center text-red-600">
+                  {totalFaltam} <span className="text-xs font-normal text-red-500/70">({pct(totalFaltam)}%)</span>
+                </td>
+                <td className="px-6 py-4 text-sm text-center text-indigo-700">{totalQuitacoes}</td>
+                <td className="px-6 py-4 text-sm text-right">{fmt(totalGanhos)}</td>
+                <td className="px-6 py-4"></td>
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>

@@ -12,10 +12,37 @@ Bônus (ganhos extras) e a tabela de comissões. Código em `backend/routers/bon
 e `backend/routers/comissoes.py`; testes em `backend/tests/test_bonus.py`.
 
 - `POST /api/bonus` — lança um bônus. **O valor é sempre calculado no servidor**
-  por `get_price(nível do CS dono, tipo)`; qualquer `valor` enviado pelo cliente é
-  ignorado em silêncio. CS lança só nos seus clientes (403 se alheio); a gestão
-  lança em qualquer um, mas o valor usa o nível do **CS dono** (não o do gestor),
-  e o bônus é creditado a esse CS.
+  por `get_price(nível do CS creditado, tipo)`; qualquer `valor` enviado pelo
+  cliente é ignorado em silêncio. CS lança só nos seus clientes (403 se alheio); a
+  gestão lança em qualquer um. Por padrão o bônus é creditado ao **CS dono** do
+  cliente, com o nível dele. Ver o override abaixo.
+
+## Override de CS pela gestão (Etapa 9)
+
+O body do `POST /api/bonus` aceita um campo **opcional `cs_id`** que muda **de qual
+CS** vem o crédito (e cujo nível define o valor). O caminho padrão é preservado
+intacto:
+
+| Quem chama | `cs_id` no body | Resultado |
+|---|---|---|
+| **CS** comum | ignorado | Sempre credita **a si mesmo** (nível próprio). Continua exigindo que o cliente seja dele (403 se alheio). |
+| **Gerente/Supervisor** | ausente | Comportamento da Etapa 4: credita o **dono** do cliente, nível do dono. |
+| **Gerente/Supervisor** | informado | Credita **esse CS** (não precisa ser o dono), com **o nível dele**. CS inexistente/inativo → **404**. |
+
+**Por que o CS comum não pode usar essa exceção:** se um CS pudesse mandar `cs_id`
+de outra pessoa, conseguiria **redirecionar o próprio esforço (ou o de um colega)**
+para inflar/manipular comissões de terceiros — uma brecha de integridade do
+comissionamento. Por isso o servidor **força** o `cs_id` ao próprio chamador quando
+o papel é CS: a escolha de "para quem vai o crédito" é uma decisão de **gestão**,
+auditável (o gestor logado é quem dispara), nunca do operador. O valor continua
+**sempre do servidor** nos dois caminhos — o body nunca define o valor, só de qual
+CS sai o nível usado.
+
+No frontend, o botão **"Adicionar Bônus"** em *Bônus & Comissões* aparece **só para
+gestão**; o CS comum continua com o seu próprio formulário (que credita a si
+mesmo). O modal da gestão tem três selects — Cliente (base inteira), CS (lista de
+CS ativos, independente do dono) e Ação — sem campo de data (timestamp é do
+servidor).
 - `GET /api/bonus/extrato` — CS vê só os seus; gestão vê todos. Filtros `?cs_id=` e
   `?mes=AAAA-MM`. Ordenado por data desc.
 - `GET /api/comissoes/tabela` — qualquer autenticado (o frontend lê daqui os

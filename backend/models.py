@@ -63,6 +63,10 @@ class Customer(Base):
     contatos = Column(Integer, default=0, nullable=False)
     tentativas = Column(Integer, default=0, nullable=False)
     ultimo_contato = Column(DateTime, nullable=True)
+    # Status jurídico do cliente (editável na tela Quitações) — Etapa 9.
+    protesto = Column(String, default="Não possui", nullable=False)        # Sim | Não possui | Cliente ciente
+    tarifas_restituiveis = Column(Boolean, default=False, nullable=False)  # Sim/Não (true/false)
+    consulta_processo = Column(Boolean, default=False, nullable=False)     # Sim/Não — processo consultado?
 
 
 class CommissionTable(Base):
@@ -110,7 +114,12 @@ class Quitacao(Base):
     data_pagamento = Column(Date, nullable=True)
     consulta_processo = Column(String, default="Ativa", nullable=False)  # Ativa | Excluída
     protesto = Column(Boolean, default=False, nullable=False)
-    tarifas_restituiveis = Column(Boolean, default=False, nullable=False)  # Sim/Não, não valor
+    # DEPRECATED (Etapa 9): a fonte única de verdade de "tarifas restituíveis" passou
+    # a ser Customer.tarifas_restituiveis (editável na tela Quitações). Esta coluna
+    # ainda é ESCRITA por quitar()/demo_seed como snapshot histórico, mas NÃO é lida
+    # nem exibida em lugar nenhum (rota/frontend/seed). Não usar como fonte. Ver docs/DECISOES.md.
+    tarifas_restituiveis = Column(Boolean, default=False, nullable=False)
+    pagamento = Column(String, nullable=False)                       # texto livre: "à vista", "10x de R$500,00"
     mes_referencia = Column(String, nullable=True)                   # "AAAA-MM"
     # Economia e percentual NÃO são armazenados — calculados na resposta da API.
 

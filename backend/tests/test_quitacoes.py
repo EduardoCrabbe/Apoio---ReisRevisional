@@ -53,10 +53,11 @@ def _cliente(db, id_dj, cs_id, nome="Ana"):
     return c
 
 
-def _quitacao(db, customer_id, cs_id, original, pago, mes="2026-06"):
+def _quitacao(db, customer_id, cs_id, original, pago, mes="2026-06", pagamento="à vista"):
     q = models.Quitacao(
         customer_id=customer_id, cs_id=cs_id,
         valor_original=original, valor_pago=pago, mes_referencia=mes,
+        pagamento=pagamento,
     )
     db.add(q)
     db.commit()
@@ -101,6 +102,34 @@ def test_filtro_mes_invalido_422(client, db):
     cs1 = _user(db, "CS", "cs1", level_cs=1)
     r = client.get("/api/quitacoes?mes=2026-13", headers=_headers(cs1))
     assert r.status_code == 422
+
+
+def test_get_retorna_campo_pagamento(client, db):
+    cs1 = _user(db, "CS", "cs1", level_cs=1)
+    _cliente(db, "C1", cs1.id, nome="João")
+    _quitacao(db, "C1", cs1.id, 1000.0, 400.0, pagamento="10x de R$500,00")
+
+    r = client.get("/api/quitacoes", headers=_headers(cs1))
+    assert r.status_code == 200
+    item = r.json()[0]
+    assert "pagamento" in item
+    assert item["pagamento"] == "10x de R$500,00"
+
+
+def test_get_inclui_status_juridico_do_cliente(client, db):
+    cs1 = _user(db, "CS", "cs1", level_cs=1)
+    c = _cliente(db, "C1", cs1.id, nome="João")
+    c.protesto = "Cliente ciente"
+    c.tarifas_restituiveis = True
+    c.consulta_processo = True
+    db.commit()
+    _quitacao(db, "C1", cs1.id, 1000.0, 400.0)
+
+    item = client.get("/api/quitacoes", headers=_headers(cs1)).json()[0]
+    # vêm do Customer (join), não da quitação
+    assert item["protesto"] == "Cliente ciente"
+    assert item["tarifas_restituiveis"] is True
+    assert item["consulta_processo"] is True
 
 
 def test_sem_token_401(client, db):
