@@ -61,6 +61,13 @@ def lancar_bonus(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    # "Quitacao" NÃO pode ser lançada manualmente aqui (nem por CS, nem por
+    # gestão com/sem cs_id): ela nasce só do fluxo real de quitar() em Meus
+    # Clientes, que cria o BonusEntry por dentro (services.clientes), sem passar
+    # por este endpoint HTTP.
+    if payload.tipo == "Quitacao":
+        raise HTTPException(422, "Quitação deve ser lançada pela tela Meus Clientes.")
+
     cliente = buscar_cliente(db, payload.customer_id)       # 404 se não existe
     exigir_pode_editar(cliente, user)                       # CS só nos seus; gestão qualquer
 

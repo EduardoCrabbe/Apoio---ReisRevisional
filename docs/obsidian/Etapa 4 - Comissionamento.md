@@ -43,6 +43,33 @@ gestão**; o CS comum continua com o seu próprio formulário (que credita a si
 mesmo). O modal da gestão tem três selects — Cliente (base inteira), CS (lista de
 CS ativos, independente do dono) e Ação — sem campo de data (timestamp é do
 servidor).
+## "Quitacao" não é lançável manualmente
+
+O `POST /api/bonus` **rejeita `tipo="Quitacao"` com 422** ("Quitação deve ser
+lançada pela tela Meus Clientes") — e isso vale para **todos os caminhos**: CS
+comum, gestão sem `cs_id` e gestão com `cs_id` (override). O bônus de Quitação
+**não** entra pela porta do lançamento manual.
+
+**Por quê:** a quitação é um evento real do CRM, não uma meta avulsa. Ela nasce
+**uma única vez**, por dentro de `quitar()` (em `services/clientes.py`), quando o
+CS de fato quita o cliente em *Meus Clientes* — esse fluxo cria o `BonusEntry` de
+Quitação automaticamente (com o valor congelado do nível do CS), junto com o
+registro de `Quitacao` e a mudança de status do cliente. Se a Quitação também
+pudesse ser lançada à mão pelo endpoint de bônus, abriríamos espaço para **bônus
+de quitação sem quitação** — duplicação e crédito desacompanhado do fato gerador,
+quebrando a conciliação entre `quitacoes` e `bonus_entries`. Mantendo-a exclusiva
+do fluxo automático, todo bônus de Quitação tem **exatamente uma** quitação por
+trás.
+
+> O caminho interno de `quitar()` **não passa por HTTP** — ele instancia o
+> `BonusEntry` direto. Logo, o guard de 422 no router não o afeta (regressão
+> coberta em `test_crm.py`: quitar cria o bônus de Quitação sem erro).
+
+No frontend, "Quitação" foi **removida da lista de Ação** dos dois formulários de
+*Bônus & Comissões* (o do próprio CS e o modal de override da gestão). Ela
+permanece apenas como **rótulo de exibição no extrato**, para mostrar bonitinho as
+quitações que o fluxo automático já gerou.
+
 - `GET /api/bonus/extrato` — CS vê só os seus; gestão vê todos. Filtros `?cs_id=` e
   `?mes=AAAA-MM`. Ordenado por data desc.
 - `GET /api/comissoes/tabela` — qualquer autenticado (o frontend lê daqui os

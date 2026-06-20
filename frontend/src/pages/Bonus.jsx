@@ -4,6 +4,9 @@ import { api } from '../services/api';
 
 // Rótulos/ícones amigáveis para as ações da commission_table (a ação "Atendimento"
 // não é um bônus manual — fica de fora). VALORES vêm da API, nunca hardcoded.
+// "Quitacao" continua aqui só para EXIBIÇÃO no extrato (a quitação cria seu bônus
+// automaticamente), mas é EXCLUÍDA dos formulários de lançamento manual — ver
+// `tiposBonus`. O backend também rejeita POST /api/bonus tipo="Quitacao" (422).
 const META = {
   Quitacao: { label: 'Quitação', icon: MessageSquare },
   ComentarioGoogle: { label: 'Comentário Google (Positivo)', icon: Star },
@@ -12,6 +15,9 @@ const META = {
   VideoDepoimento: { label: 'Depoimento por Vídeo', icon: Video },
 };
 
+// Tipo padrão dos formulários de lançamento manual (Quitação não é lançável aqui).
+const TIPO_PADRAO = 'ComentarioGoogle';
+
 export default function Bonus({ role, user }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
   const nivel = user?.level_cs || 1;
@@ -19,14 +25,14 @@ export default function Bonus({ role, user }) {
 
   const [tabela, setTabela] = useState([]);
   const [extrato, setExtrato] = useState([]);
-  const [form, setForm] = useState({ customer_id: '', tipo: 'Quitacao' });
+  const [form, setForm] = useState({ customer_id: '', tipo: TIPO_PADRAO });
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   // Estado do lançamento pela GESTÃO (modal): cliente de toda a base + CS que recebe.
   const [modalGestao, setModalGestao] = useState(false);
   const [clientesBase, setClientesBase] = useState([]);
   const [csAtivos, setCsAtivos] = useState([]);
-  const [formGestao, setFormGestao] = useState({ customer_id: '', cs_id: '', tipo: 'Quitacao' });
+  const [formGestao, setFormGestao] = useState({ customer_id: '', cs_id: '', tipo: TIPO_PADRAO });
   const [salvando, setSalvando] = useState(false);
 
   const showToast = (message, type = 'success') => {
@@ -63,7 +69,7 @@ export default function Bonus({ role, user }) {
         tipo: formGestao.tipo,
       });
       setModalGestao(false);
-      setFormGestao({ customer_id: '', cs_id: '', tipo: 'Quitacao' });
+      setFormGestao({ customer_id: '', cs_id: '', tipo: TIPO_PADRAO });
       await fetchExtrato();
       showToast('Bônus creditado ao CS escolhido!');
     } catch (err) {
@@ -79,8 +85,11 @@ export default function Bonus({ role, user }) {
     return usaNivelAlto ? regra.valor_nivel_3_5 : regra.valor_nivel_1_2;
   };
 
-  // Tipos de bônus = ações da tabela que têm rótulo definido (exclui Atendimento).
-  const tiposBonus = tabela.filter((t) => META[t.acao]).map((t) => ({ id: t.acao, ...META[t.acao] }));
+  // Tipos de bônus LANÇÁVEIS manualmente = ações da tabela com rótulo definido,
+  // exceto "Atendimento" (não é bônus) e "Quitacao" (nasce só do fluxo de quitar()).
+  const tiposBonus = tabela
+    .filter((t) => META[t.acao] && t.acao !== 'Quitacao')
+    .map((t) => ({ id: t.acao, ...META[t.acao] }));
 
   const handleLancamento = async (e) => {
     e.preventDefault();

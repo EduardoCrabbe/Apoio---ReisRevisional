@@ -153,6 +153,27 @@ def test_tipo_inexistente_retorna_422(client, db):
     assert lancar(client, cs, "C1", "TipoQueNaoExiste").status_code == 422
 
 
+def test_cs_nao_pode_lancar_quitacao_manual_422(client, db):
+    # Quitação só nasce do fluxo de quitar() em Meus Clientes, nunca por POST manual.
+    cs = criar_usuario(db, "CS", 1, "cs1")
+    criar_cliente(db, "C1", cs.id)
+    r = lancar(client, cs, "C1", "Quitacao")
+    assert r.status_code == 422
+    assert "Meus Clientes" in r.json()["detail"]
+    assert db.query(models.BonusEntry).count() == 0  # nada foi criado
+
+
+def test_gestao_nao_pode_lancar_quitacao_manual_422(client, db):
+    cs = criar_usuario(db, "CS", 1, "cs1")
+    gerente = criar_usuario(db, "Gerente", None, "ger")
+    criar_cliente(db, "C1", cs.id)
+    # sem cs_id
+    assert lancar(client, gerente, "C1", "Quitacao").status_code == 422
+    # com cs_id (override) — também bloqueado
+    assert lancar(client, gerente, "C1", "Quitacao", extra={"cs_id": cs.id}).status_code == 422
+    assert db.query(models.BonusEntry).count() == 0
+
+
 def test_customer_inexistente_retorna_404(client, db):
     cs = criar_usuario(db, "CS", 1, "cs1")
     assert lancar(client, cs, "NAO_EXISTE", "VideoDepoimento").status_code == 404
