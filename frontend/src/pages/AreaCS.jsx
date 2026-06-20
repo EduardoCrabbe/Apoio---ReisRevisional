@@ -105,6 +105,12 @@ export default function AreaCS({ role }) {
       () => api.post(`/api/clientes/${id}/tentativa`),
     );
 
+  const handleDesfazerTentativa = (id) =>
+    acaoOtimista(
+      (prev) => prev.map((c) => c.id_datajuri === id ? { ...c, tentativas: Math.max(0, (c.tentativas || 0) - 1) } : c),
+      () => api.post(`/api/clientes/${id}/desfazer-tentativa`),
+    );
+
   const handleExcluir = (id) => {
     if (!window.confirm('Tem certeza que deseja excluir este cliente?')) return;
     acaoOtimista(
@@ -355,10 +361,20 @@ export default function AreaCS({ role }) {
                       )}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <button onClick={() => handleTentativa(cliente.id_datajuri)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 hover:text-slate-800 transition-all shadow-sm" title="Marcar tentativa sem retorno">
-                        <PhoneForwarded className="w-4 h-4 text-orange-500" />
-                        {cliente.tentativas > 0 ? `+${cliente.tentativas}` : 'Tentativa'}
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => handleDesfazerTentativa(cliente.id_datajuri)}
+                          disabled={(cliente.tentativas || 0) === 0}
+                          className={`p-1.5 rounded-lg border transition-colors ${cliente.tentativas > 0 ? 'border-red-200 text-red-500 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30' : 'border-slate-100 text-slate-300 dark:border-slate-700 dark:text-slate-600 cursor-not-allowed'}`}
+                          title="Desfazer tentativa"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleTentativa(cliente.id_datajuri)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 hover:text-slate-800 transition-all shadow-sm" title="Marcar tentativa sem retorno">
+                          <PhoneForwarded className="w-4 h-4 text-orange-500" />
+                          {cliente.tentativas > 0 ? `+${cliente.tentativas}` : 'Tentativa'}
+                        </button>
+                      </div>
                     </td>
                     <td className="px-4 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">

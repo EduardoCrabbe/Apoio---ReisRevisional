@@ -5,7 +5,7 @@ import {
   RefreshCw, PhoneForwarded, DollarSign, BellRing, PieChart, Trash2, ClipboardList,
 } from 'lucide-react';
 import { api } from '../services/api';
-import { onDataChanged } from '../services/refresh';
+import { onDataChanged, notifyDataChanged } from '../services/refresh';
 
 const STATS_VAZIO = {
   totalAtivos: 0, atendidos: 0, tentativas: 0, naoAtendidos: 0,
@@ -22,10 +22,17 @@ export default function Dashboard({ role }) {
   const [tarefas, setTarefas] = useState([]);
   const [alertas, setAlertas] = useState(0);
   const [erro, setErro] = useState('');
+  const [csList, setCsList] = useState([]); // CS ativos (só gestão usa)
+  const [toast, setToast] = useState({ show: false, message: '' });
 
   const [novaTarefa, setNovaTarefa] = useState({
-    setor: 'Atendimento', classificacao: 'REGULAR', prazo: '', detalhes: '',
+    setor: 'Atendimento', classificacao: 'REGULAR', prazo: '', detalhes: '', responsavel_id: '',
   });
+
+  const showToast = (message) => {
+    setToast({ show: true, message });
+    setTimeout(() => setToast({ show: false, message: '' }), 4000);
+  };
 
   const fetchStats = async () => {
     try {
@@ -68,18 +75,33 @@ export default function Dashboard({ role }) {
   // E também quando qualquer ação muda os dados (mesma fonte da Sidebar).
   useEffect(() => onDataChanged(() => { fetchStats(); fetchTarefas(); fetchAlertas(); }), []);
 
+  // Gestão pode atribuir tarefa a qualquer CS — carrega a lista de CS ativos.
+  useEffect(() => {
+    if (!isManager) return;
+    api.get('/api/equipe').then((d) => setCsList(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [isManager]);
+
   const handleAddTarefa = async (e) => {
     e.preventDefault();
     if (!novaTarefa.detalhes) return;
     try {
-      await api.post('/api/tarefas', {
+      const payload = {
         setor: novaTarefa.setor,
         classificacao: novaTarefa.classificacao,
         prazo: novaTarefa.prazo || null,
         detalhes: novaTarefa.detalhes,
-      });
-      setNovaTarefa({ setor: 'Atendimento', classificacao: 'REGULAR', prazo: '', detalhes: '' });
+      };
+      // CS responsável só vai no payload quando a gestão escolhe um (o CS comum
+      // nem vê o campo; o backend ignora valor de outro vindo de um CS).
+      if (isManager && novaTarefa.responsavel_id) {
+        payload.responsavel_id = Number(novaTarefa.responsavel_id);
+      }
+      await api.post('/api/tarefas', payload);
+      setNovaTarefa({ setor: 'Atendimento', classificacao: 'REGULAR', prazo: '', detalhes: '', responsavel_id: '' });
       fetchTarefas();
+      fetchStats();          // o radar (mesclado com tarefas) precisa atualizar
+      notifyDataChanged();
+      showToast('Tarefa criada!');
     } catch (err) {
       setErro(err.message);
     }
@@ -336,6 +358,15 @@ export default function Dashboard({ role }) {
 
           <div className="p-6 grid grid-cols-1 gap-8">
             <form onSubmit={handleAddTarefa} className="space-y-4">
+              {isManager && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">CS responsável</label>
+                  <select value={novaTarefa.responsavel_id} onChange={e => setNovaTarefa({ ...novaTarefa, responsavel_id: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm text-brand-navy dark:text-slate-200 focus:outline-none focus:border-brand-gold">
+                    <option value="">— Para mim (gestão) —</option>
+                    {csList.map((cs) => <option key={cs.cs_id} value={cs.cs_id}>{cs.nome} (Nível {cs.nivel})</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Setor</label>
                 <select value={novaTarefa.setor} onChange={e => setNovaTarefa({ ...novaTarefa, setor: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm text-brand-navy dark:text-slate-200 focus:outline-none focus:border-brand-gold">
@@ -396,6 +427,13 @@ export default function Dashboard({ role }) {
           </div>
         </div>
       </div>
+
+      {toast.show && (
+        <div className="fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 bg-emerald-50 border-emerald-200 text-emerald-700">
+          <CheckCircle2 className="w-5 h-5" />
+          <span className="font-medium text-sm">{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }

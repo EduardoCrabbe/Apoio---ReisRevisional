@@ -179,6 +179,31 @@ def test_desfazer_unico_atendimento_zera_timer(client, db):
     assert db.query(models.Attendance).filter_by(customer_id="C1").count() == 0
 
 
+# ------------------------------------------------------ desfazer tentativa
+
+def test_desfazer_tentativa_decrementa(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id, tentativas=2)
+    r = client.post("/api/clientes/C1/desfazer-tentativa", headers=headers(cs))
+    assert r.status_code == 200, r.text
+    assert r.json()["tentativas"] == 1
+
+
+def test_desfazer_tentativa_em_zero_retorna_400(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id, tentativas=0)
+    r = client.post("/api/clientes/C1/desfazer-tentativa", headers=headers(cs))
+    assert r.status_code == 400
+
+
+def test_desfazer_tentativa_outro_cs_retorna_403(client, db):
+    cs1 = criar_usuario(db, "CS", level_cs=2, sufixo="cs1")
+    cs2 = criar_usuario(db, "CS", level_cs=2, sufixo="cs2")
+    criar_cliente(db, "C1", cs_id=cs1.id, tentativas=1)
+    r = client.post("/api/clientes/C1/desfazer-tentativa", headers=headers(cs2))
+    assert r.status_code == 403
+
+
 # --------------------------------------------------------------------- quitação
 
 def test_quitar_valor_pago_maior_que_original_retorna_400(client, db):

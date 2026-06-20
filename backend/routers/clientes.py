@@ -220,6 +220,22 @@ def tentativa(
     return {"message": "Tentativa registrada.", "tentativas": cliente.tentativas}
 
 
+@router.post("/{customer_id}/desfazer-tentativa")
+def desfazer_tentativa(
+    customer_id: str,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    cliente = svc.buscar_cliente(db, customer_id)
+    svc.exigir_pode_editar(cliente, user)  # dono ou gestão; outro CS -> 403
+    if (cliente.tentativas or 0) <= 0:
+        raise HTTPException(400, "Nada para desfazer.")
+    cliente.tentativas = cliente.tentativas - 1  # nunca abaixo de 0 (já checado)
+    db.commit()
+    db.refresh(cliente)
+    return {"message": "Tentativa desfeita.", "tentativas": cliente.tentativas}
+
+
 @router.post("/{customer_id}/quitar", response_model=QuitarOut)
 def quitar(
     customer_id: str,

@@ -125,7 +125,23 @@ um sinal pub/sub em `src/services/refresh.js` (`notifyDataChanged()` disparado
 pelo AreaCS/Quitações após cada mutação). Isso elimina o gráfico do rodapé do
 sidebar mostrar um total diferente da tela "Meus Clientes".
 
-Total da suíte após estas mudanças: **104 testes**.
+### Gestão atribui tarefa a um CS (Pacote 2)
+
+O formulário "Nova Tarefa" (no Dashboard) ganhou um select **"CS responsável"**
+visível **só para Gerente/Supervisor** (lista de CS ativos via `/api/equipe`).
+Selecionado → o `POST /api/tarefas` envia `responsavel_id`; vazio → cai pro próprio
+gestor. Para o **CS comum o campo nem aparece** (e o backend já ignora `responsavel_id`
+de terceiro vindo de um CS desde a Etapa 5). Sucesso → toast + refetch da lista e
+do Radar (a tarefa CRÍTICA/URGENTE aparece nele).
+
+### Desfazer Tentativa (Pacote 2)
+
+Novo `POST /api/clientes/{id}/desfazer-tentativa` — decrementa `tentativas` (nunca
+< 0; já em 0 → **400 "Nada para desfazer"**; dono ou gestão, outro CS → **403**).
+Na tela "Meus Clientes", um **"X"** ao lado de *Tentativa* (mesmo estilo do X de
+*Atendido*), com atualização otimista + revert + toast.
+
+Total da suíte após estas mudanças: **111 testes**.
 
 ## Como rodar o demo
 
