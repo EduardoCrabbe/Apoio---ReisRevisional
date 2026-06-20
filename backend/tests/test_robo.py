@@ -70,6 +70,15 @@ def payload_alerta(id_dj):
             "triagem": ALERTA}
 
 
+REGISTRO_NORMAL = "REGISTRO NORMAL"
+
+
+def payload_registro_normal(id_dj):
+    return {"id_datajuri": id_dj, "classe": "Execução de Título Extrajudicial",
+            "data_movimentacao": "2026-06-14", "descricao": "Despacho: manifeste-se a parte autora",
+            "triagem": REGISTRO_NORMAL}
+
+
 # ---------------------------------------------------------------- autenticação
 
 def test_resultado_sem_token_retorna_401(client, db):
@@ -111,6 +120,47 @@ def test_alerta_cria_tarefa_e_nao_duplica(client, db):
     assert r2.status_code == 201
     assert db.query(models.Tarefa).filter_by(cliente_id="C1", origem="sistema").count() == 1
     assert db.query(models.RoboResultado).filter_by(customer_id="C1").count() == 2
+
+
+def test_registro_normal_cria_tarefa_regular_e_nao_duplica(client, db):
+    cs = criar_usuario(db, "CS", 1, "cs1")
+    criar_cliente(db, "C1", cs.id)
+
+    r1 = client.post("/api/robo/resultado", json=payload_registro_normal("C1"), headers=robo_headers())
+    assert r1.status_code == 201
+
+    tarefas = db.query(models.Tarefa).filter_by(cliente_id="C1", origem="sistema").all()
+    assert len(tarefas) == 1
+    assert tarefas[0].classificacao == "REGULAR"
+    assert tarefas[0].setor == "Atendimento"
+    assert tarefas[0].responsavel_id == cs.id
+
+    # Segundo POST igual NÃO duplica a tarefa REGULAR (mas grava o 2º resultado).
+    r2 = client.post("/api/robo/resultado", json=payload_registro_normal("C1"), headers=robo_headers())
+    assert r2.status_code == 201
+    assert db.query(models.Tarefa).filter_by(cliente_id="C1", origem="sistema").count() == 1
+    assert db.query(models.RoboResultado).filter_by(customer_id="C1").count() == 2
+
+
+def test_registro_normal_sem_dono_nao_cria_tarefa(client, db):
+    criar_cliente(db, "C1", cs_id=None)  # cliente sem CS dono
+    r = client.post("/api/robo/resultado", json=payload_registro_normal("C1"), headers=robo_headers())
+    assert r.status_code == 201
+    assert db.query(models.Tarefa).filter_by(cliente_id="C1").count() == 0
+
+
+def test_alerta_e_registro_normal_coexistem_sem_dedup_cruzado(client, db):
+    # Um alerta (CRÍTICA) e um registro normal (REGULAR) no mesmo cliente geram
+    # DUAS tarefas distintas — o dedup é por classificação, não bloqueia cruzado.
+    cs = criar_usuario(db, "CS", 1, "cs1")
+    criar_cliente(db, "C1", cs.id)
+
+    client.post("/api/robo/resultado", json=payload_registro_normal("C1"), headers=robo_headers())
+    client.post("/api/robo/resultado", json=payload_alerta("C1"), headers=robo_headers())
+
+    tarefas = db.query(models.Tarefa).filter_by(cliente_id="C1", origem="sistema").all()
+    classes = sorted(t.classificacao for t in tarefas)
+    assert classes == ["CRÍTICA/URGENTE", "REGULAR"]
 
 
 # ---------------------------------------------------------------- escopo GET

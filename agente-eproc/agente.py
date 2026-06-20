@@ -22,6 +22,7 @@ import logging
 import os
 import sqlite3
 import sys
+import time
 import unicodedata
 import urllib.error
 import urllib.request
@@ -40,6 +41,8 @@ LOG_FILE = os.path.join(BASE_DIR, "agente.log")
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
 ALERTA_VERMELHO = "🚨 ALERTA VERMELHO"
+REGISTRO_NORMAL = "REGISTRO NORMAL"
+IGNORADO = "IGNORADO (OUTRA CLASSE)"
 CAMPOS_SEGUROS = ("id_datajuri", "classe", "data_movimentacao", "descricao", "triagem")
 
 logging.basicConfig(
@@ -62,6 +65,9 @@ def carregar_config() -> dict:
         "ROBO_TOKEN": cfg.get("ROBO_TOKEN") or os.getenv("ROBO_TOKEN", ""),
         "PLANILHA_DIA": cfg.get("PLANILHA_DIA") or os.getenv("PLANILHA_DIA", os.path.join(BASE_DIR, "planilha_exemplo.xlsx")),
         "MODO_SIMULADO": str(cfg.get("MODO_SIMULADO", os.getenv("MODO_SIMULADO", "1"))) == "1",
+        # Só afetam o caminho real (MODO_SIMULADO=0):
+        "HEADLESS": str(cfg.get("HEADLESS", os.getenv("HEADLESS", "1"))) == "1",
+        "DELAY_CONSULTA_SEG": float(cfg.get("DELAY_CONSULTA_SEG", os.getenv("DELAY_CONSULTA_SEG", "4"))),
     }
 
 
@@ -73,6 +79,13 @@ def _norm(texto) -> str:
     return "".join(c for c in s if not unicodedata.combining(c))
 
 
+def _norm_header(texto) -> str:
+    """Normaliza cabeçalho para casar por NOME (não por posição): sem acento, sem
+    caixa e SEM separadores. Assim 'ID DataJuri', 'id_datajuri' e 'ID-DataJuri'
+    são o mesmo. Mantém só letras/dígitos."""
+    return "".join(c for c in _norm(texto) if c.isalnum())
+
+
 def triagem(classe, movimentacao) -> str:
     """classe contém 'BUSCA E APREENSÃO' E movimentação contém 'Petição'/'Mandado'."""
     c, m = _norm(classe), _norm(movimentacao)
@@ -82,25 +95,35 @@ def triagem(classe, movimentacao) -> str:
 
 
 def ler_planilha(caminho: str):
-    """Lê id_datajuri, cpf, processo (cabeçalhos tolerantes a acento/caixa)."""
+    """Lê as 3 colunas obrigatórias por NOME de cabeçalho (tolerante a
+    acento/caixa/separadores): 'ID DataJuri', 'CPF' e 'Processo'. Se qualquer uma
+    faltar, levanta erro CLARO listando o que falta (não adivinha por posição)."""
     from openpyxl import load_workbook
 
     wb = load_workbook(caminho, read_only=True, data_only=True)
     ws = wb.active
     linhas = ws.iter_rows(values_only=True)
     cabecalho = next(linhas)
-    idx = {_norm(h): i for i, h in enumerate(cabecalho) if h is not None}
+    idx = {_norm_header(h): i for i, h in enumerate(cabecalho) if h is not None}
 
     def pos(*nomes):
         for n in nomes:
-            if _norm(n) in idx:
-                return idx[_norm(n)]
+            if _norm_header(n) in idx:
+                return idx[_norm_header(n)]
         return None
 
-    i_id, i_cpf, i_proc = pos("id_datajuri", "codigo dj"), pos("cpf"), pos("processo", "numero do processo")
-    if i_id is None:
+    i_id = pos("ID DataJuri", "id_datajuri", "codigo dj")
+    i_cpf = pos("CPF")
+    i_proc = pos("Processo", "numero do processo")
+
+    faltando = [nome for nome, i in
+                (("ID DataJuri", i_id), ("CPF", i_cpf), ("Processo", i_proc)) if i is None]
+    if faltando:
         wb.close()
-        raise ValueError("Planilha sem a coluna 'id_datajuri'.")
+        raise ValueError(
+            "Planilha inválida: falta(m) a(s) coluna(s) " + ", ".join(f"'{n}'" for n in faltando)
+            + ". Cabeçalhos esperados: 'ID DataJuri', 'CPF', 'Processo'."
+        )
 
     registros = []
     for row in linhas:
@@ -136,21 +159,41 @@ def consultar_simulado(i: int, registro: dict) -> dict:
     return {"classe": classe, "data_movimentacao": (hoje - timedelta(days=i)).isoformat(), "descricao": desc}
 
 
-def consultar_real(registro: dict) -> dict:
-    """Ponto de integração com o scraper EXISTENTE (não alterar a lógica dele).
+def _canonical_triagem(bruta: str) -> str:
+    """Mapeia o retorno do scraper.aplicar_triagem (com espaço/variações) para as
+    strings canônicas que o servidor entende (mesmas constantes da Etapa 8/A)."""
+    b = _norm(bruta)
+    if "ALERTA VERMELHO" in b:
+        return ALERTA_VERMELHO
+    if "REGISTRO NORMAL" in b:
+        return REGISTRO_NORMAL
+    return IGNORADO
 
-    Requer undetected-chromedriver etc. Ajuste o parse conforme o retorno de
-    consultar_processo() do seu scraper. O demo/testes usam MODO_SIMULADO=1.
+
+def consultar_real(registro: dict, cfg: dict) -> dict:
+    """Busca REAL no Eproc por CPF, cruza com o processo esperado da planilha e
+    aplica a triagem por classe (item A). Já devolve a triagem CANÔNICA pronta —
+    o servidor cria a tarefa (CRÍTICA/URGENTE ou REGULAR) a partir dela.
+
+    Levanta exceção (muitos processos / processo não localizado / scraper
+    indisponível) para que rodar_dia logue e siga pro próximo cliente, sem
+    derrubar o lote. O CPF e o nº do processo NUNCA entram no retorno.
     """
     try:
-        from scraper import EprocScraper  # scraper existente em agente-eproc/
+        from scraper import EprocScraper  # scraper em agente-eproc/
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(f"Scraper real indisponível: {exc}")
 
-    with EprocScraper(headless=True) as s:  # pragma: no cover
-        bruto = s.consultar_processo(numero_processo=registro["processo"], cpf=registro["cpf"])
-        # 'bruto' depende do scraper; tratamos como descrição da movimentação.
-        return {"classe": "", "data_movimentacao": date.today().isoformat(), "descricao": str(bruto)}
+    with EprocScraper(headless=cfg["HEADLESS"]) as s:  # pragma: no cover
+        dados = s.consultar_por_cpf(cpf=registro["cpf"], processo_esperado=registro["processo"])
+        tri = _canonical_triagem(s.aplicar_triagem(dados.get("classe", ""), dados.get("descricao", "")))
+
+    return {
+        "classe": dados.get("classe", ""),
+        "data_movimentacao": dados.get("data_movimentacao") or date.today().isoformat(),
+        "descricao": dados.get("descricao", ""),
+        "triagem": tri,  # já canônica; rodar_dia usa direto no modo real
+    }
 
 
 # --------------------------------------------------------- armazenamento local
@@ -262,13 +305,20 @@ def rodar_dia():
 
     novos_pendentes = _carregar_pendentes()
     for i, registro in enumerate(registros):
+        # Scraping real é contra serviço público: respiro entre consultas para
+        # não disparar bloqueio por excesso de requisições. Não afeta o simulado.
+        if not cfg["MODO_SIMULADO"] and i > 0:
+            time.sleep(cfg["DELAY_CONSULTA_SEG"])
+
         try:
-            res = consultar_simulado(i, registro) if cfg["MODO_SIMULADO"] else consultar_real(registro)
+            res = consultar_simulado(i, registro) if cfg["MODO_SIMULADO"] else consultar_real(registro, cfg)
         except Exception as exc:
             log.error("Falha ao consultar %s: %s", registro["id_datajuri"], exc)
             continue
 
-        tri = triagem(res["classe"], res["descricao"])
+        # No modo real a triagem já vem canônica de consultar_real; no simulado,
+        # calcula aqui (comportamento intocado).
+        tri = res.get("triagem") or triagem(res["classe"], res["descricao"])
         gravar_local(registro, res, tri)  # local-primeiro: sempre grava
         log.info("%s -> %s", registro["id_datajuri"], tri)
 

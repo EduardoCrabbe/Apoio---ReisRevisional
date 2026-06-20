@@ -5,6 +5,27 @@ import time
 import os
 import traceback
 
+URL_CONSULTA = (
+    "https://eproc-consulta.tjsp.jus.br/consulta_1g/externo_controlador.php"
+    "?acao=tjsp@consulta_publica_eproc/consultar&tipoConsulta=CP"
+    "&hash=f3c28e42b825498235ed8a74b028a6bc"
+)
+
+
+class MuitosProcessosError(Exception):
+    """CPF com volume de processos acima do permitido pela consulta pública."""
+
+
+class ProcessoNaoLocalizadoError(Exception):
+    """Nenhum processo da lista do CPF bate com o número esperado da planilha."""
+
+
+def so_digitos(texto) -> str:
+    """Normaliza um número de processo: mantém só dígitos (remove pontos, traços,
+    espaços). Permite comparar formatos visuais diferentes do mesmo processo."""
+    return "".join(c for c in str(texto if texto is not None else "") if c.isdigit())
+
+
 def log_msg(msg):
     log_path = os.path.join(os.path.expanduser("~"), "robo_monitoramento.log")
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -143,6 +164,127 @@ class EprocScraper:
             tb = traceback.format_exc().encode('ascii', 'ignore').decode()
             print(f" [ERRO] Falha durante a consulta: {err_msg}\n{tb}")
             raise e
+
+    def consultar_por_cpf(self, cpf: str, processo_esperado: str) -> dict:
+        """Fluxo REAL (MODO_SIMULADO=0): pesquisa por CPF/CNPJ, cruza com o
+        processo esperado da planilha e devolve a ÚLTIMA movimentação.
+
+        Retorna {"classe", "data_movimentacao", "descricao"}.
+        Lança:
+          - MuitosProcessosError      → CPF não consultável (excesso de processos);
+          - ProcessoNaoLocalizadoError → nenhum processo bate com o esperado.
+        O agente trata ambas como falha DESTE cliente (loga e segue pro próximo).
+
+        ⚠️ VALIDAÇÃO MANUAL OBRIGATÓRIA (headless=False, 1-2 CPFs) antes de
+        produção: os seletores do Eproc/TJSP podem mudar sem aviso. Ver
+        docs/obsidian/Etapa 8 - Agente Eproc.md > "Busca real".
+        """
+        if not cpf:
+            raise ValueError("CPF obrigatório para a busca real.")
+
+        print(" Acessando portal Eproc SP (pesquisa por CPF/CNPJ)...")
+        self.page.get(URL_CONSULTA)
+
+        # (1) Tipo de Pesquisa = CPF/CNPJ ('CP'), NÃO Número do Processo ('NU').
+        sel_tipo = self.page.ele('#selTipoPesquisa')
+        sel_tipo.select.by_value('CP')
+
+        # (2) Insere o CPF (digitação "humana") e submete.
+        input_cp = self.page.ele('@name=strDocParte')
+        input_cp.clear()
+        for char in str(cpf):
+            input_cp.input(char)
+            time.sleep(0.05)
+
+        btn = self.page.ele('#sbmConsultar')
+        Actions(self.page).move_to(btn).click()
+
+        alert_text = self.page.handle_alert(accept=True, timeout=2)
+        if alert_text:
+            print(f" Alerta detectado: {alert_text}. Aguardando 5s e tentando de novo...")
+            time.sleep(5)
+            if self.page.ele('#sbmConsultar'):
+                self.page.ele('#sbmConsultar').click()
+
+        self.page.wait.load_start()
+        time.sleep(4)
+
+        # (3) Erro de excesso de processos → falha controlada deste cliente.
+        corpo = (self.page.html or "").upper()
+        if "MUITOS PROCESSOS" in corpo or "NAO PODEM SER CONSULTADAS" in corpo or "NÃO PODEM SER CONSULTADAS" in corpo:
+            raise MuitosProcessosError(
+                "entidades com muitos processos não podem ser consultadas (CPF ignorado)"
+            )
+
+        # (4) Cruza pelo número de processo esperado (normalizado).
+        alvo = so_digitos(processo_esperado)
+        if not alvo:
+            raise ProcessoNaoLocalizadoError("número de processo esperado ausente na planilha")
+
+        link_processo = None
+        for a in self.page.eles('tag:a'):
+            txt = so_digitos(a.text)
+            if txt and (txt == alvo or alvo in txt):
+                link_processo = a
+                break
+
+        # (5) Não encontrou → falha controlada deste cliente.
+        if link_processo is None:
+            raise ProcessoNaoLocalizadoError(
+                f"processo não localizado para este CPF (esperado {processo_esperado})"
+            )
+
+        # (6) Abre o processo e captura a última movimentação.
+        print(f" Processo correspondente encontrado. Abrindo autos...")
+        link_processo.click()
+        time.sleep(2)
+        if self.page.handle_alert(accept=True, timeout=2):
+            raise RuntimeError("Cloudflare/Captcha bloqueou o acesso aos autos.")
+
+        # O Eproc costuma abrir os autos em nova aba — passa o foco pra ela.
+        if self.page.tabs_count > 1:
+            self.page = self.page.get_tab(self.page.latest_tab.tab_id)
+            time.sleep(1)
+
+        return self._extrair_ultima_movimentacao()
+
+    def _extrair_ultima_movimentacao(self) -> dict:
+        """Lê a classe e a movimentação MAIS RECENTE dos autos abertos.
+
+        Defensivo: tenta seletores conhecidos e, na ausência, cai para heurística
+        de tabela. Seletores são candidatos a quebrar — validar manualmente.
+        """
+        classe = ""
+        try:
+            el_classe = self.page.ele('#txtClasse', timeout=2) or self.page.ele('text:Classe', timeout=2)
+            if el_classe:
+                classe = (el_classe.text or "").replace("Classe", "").strip()
+        except Exception:
+            pass
+
+        data_mov, descricao = "", ""
+        try:
+            # Tabela de eventos/movimentações. A linha mais recente costuma ser a
+            # primeira (data desc) — se o tribunal listar em ordem crescente,
+            # ajustar para a última linha na validação manual.
+            tabela = self.page.ele('#tblEventos', timeout=3) or self.page.ele('tag:table', timeout=3)
+            if tabela:
+                linhas = tabela.eles('tag:tr')
+                # pula o cabeçalho (linhas[0]) quando houver mais de uma linha
+                alvo = linhas[1] if len(linhas) > 1 else (linhas[0] if linhas else None)
+                if alvo:
+                    celulas = [c.text.strip() for c in alvo.eles('tag:td')]
+                    if celulas:
+                        data_mov = next((c for c in celulas if any(ch.isdigit() for ch in c)), celulas[0])
+                        descricao = max(celulas, key=len)  # a célula mais longa ~ descrição
+        except Exception as e:
+            print(f" [AVISO] Não consegui extrair a movimentação estruturada: {e}")
+
+        return {
+            "classe": classe,
+            "data_movimentacao": data_mov or time.strftime("%Y-%m-%d"),
+            "descricao": descricao,
+        }
 
     def aplicar_triagem(self, acao: str, movimentacao: str) -> str:
         acao = acao.upper()

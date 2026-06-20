@@ -21,6 +21,7 @@ from auth.deps import get_current_user, require_role
 router = APIRouter(prefix="/api/robo", tags=["robo"])
 
 ALERTA_VERMELHO = "🚨 ALERTA VERMELHO"
+REGISTRO_NORMAL = "REGISTRO NORMAL"
 
 
 def verificar_robo_token(x_robo_token: Optional[str] = Header(None)):
@@ -54,8 +55,11 @@ def _inicio_do_dia():
     return datetime(a.year, a.month, a.day)
 
 
-def _criar_tarefa_alerta(db: Session, customer: models.Customer) -> None:
-    """Cria tarefa CRÍTICA/URGENTE pro CS dono, sem duplicar alerta aberto."""
+def _criar_tarefa_robo(db: Session, customer: models.Customer, classificacao: str, detalhes: str) -> None:
+    """Cria tarefa do robô pro CS dono, sem duplicar uma tarefa ABERTA de MESMA
+    classificação para o mesmo cliente (dedup por cliente + classificação + origem
+    'sistema'). Assim ALERTA (CRÍTICA/URGENTE) e REGISTRO NORMAL (REGULAR) são
+    independentes: uma tarefa REGULAR aberta não impede a criação de um alerta."""
     if customer.cs_id is None:
         return  # sem dono, não há a quem atribuir
     ja_aberta = (
@@ -64,6 +68,7 @@ def _criar_tarefa_alerta(db: Session, customer: models.Customer) -> None:
             models.Tarefa.origem == "sistema",
             models.Tarefa.concluida.is_(False),
             models.Tarefa.cliente_id == customer.id_datajuri,
+            models.Tarefa.classificacao == classificacao,
         )
         .first()
     )
@@ -74,10 +79,10 @@ def _criar_tarefa_alerta(db: Session, customer: models.Customer) -> None:
         responsavel_id=customer.cs_id,
         cliente_id=customer.id_datajuri,
         setor="Atendimento",
-        classificacao="CRÍTICA/URGENTE",
+        classificacao=classificacao,
         origem="sistema",
         prazo=_utcnow().date(),
-        detalhes=f"🚨 ALERTA VERMELHO no Eproc — cliente {customer.first_name}. Verificar movimentação urgente.",
+        detalhes=detalhes,
         concluida=False,
     ))
 
@@ -103,7 +108,16 @@ def receber_resultado(
     db.add(resultado)
 
     if payload.triagem == ALERTA_VERMELHO:
-        _criar_tarefa_alerta(db, customer)
+        _criar_tarefa_robo(
+            db, customer, "CRÍTICA/URGENTE",
+            f"🚨 ALERTA VERMELHO no Eproc — cliente {customer.first_name}. Verificar movimentação urgente.",
+        )
+    elif payload.triagem == REGISTRO_NORMAL:
+        # Classe permitida sem alerta: tarefa de acompanhamento de rotina.
+        _criar_tarefa_robo(
+            db, customer, "REGULAR",
+            f"Movimentação no Eproc (registro normal) — cliente {customer.first_name}. Revisar andamento do processo.",
+        )
 
     db.commit()
     db.refresh(resultado)
