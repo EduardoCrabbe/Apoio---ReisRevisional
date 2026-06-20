@@ -23,15 +23,15 @@ export default function Dashboard({ role }) {
   const [alertas, setAlertas] = useState(0);
   const [erro, setErro] = useState('');
   const [csList, setCsList] = useState([]); // CS ativos (só gestão usa)
-  const [toast, setToast] = useState({ show: false, message: '' });
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   const [novaTarefa, setNovaTarefa] = useState({
     setor: 'Atendimento', classificacao: 'REGULAR', prazo: '', detalhes: '', responsavel_id: '',
   });
 
-  const showToast = (message) => {
-    setToast({ show: true, message });
-    setTimeout(() => setToast({ show: false, message: '' }), 4000);
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type }), 4000);
   };
 
   const fetchStats = async () => {
@@ -107,12 +107,17 @@ export default function Dashboard({ role }) {
     }
   };
 
+  // Concluir vale para TAREFA DO SISTEMA e DA GESTÃO (mesma regra de ownership
+  // do adiar/excluir, validada no backend desde a Etapa 5). Sucesso: remove o
+  // card + toast; erro: toast com a mensagem do backend e recarrega (o card volta).
   const concluirTarefa = async (id) => {
-    setTarefas((prev) => prev.filter((t) => t.id !== id)); // some da lista de abertas
+    setTarefas((prev) => prev.filter((t) => t.id !== id)); // some da lista de abertas (GET filtra concluida=false)
     try {
       await api.post(`/api/tarefas/${id}/concluir`);
+      notifyDataChanged(); // a tarefa pode estar no Radar de Prioridades
+      showToast('Tarefa concluída!');
     } catch (err) {
-      setErro(err.message);
+      showToast(err.message, 'error');
       fetchTarefas();
     }
   };
@@ -429,8 +434,8 @@ export default function Dashboard({ role }) {
       </div>
 
       {toast.show && (
-        <div className="fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 bg-emerald-50 border-emerald-200 text-emerald-700">
-          <CheckCircle2 className="w-5 h-5" />
+        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+          {toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
           <span className="font-medium text-sm">{toast.message}</span>
         </div>
       )}

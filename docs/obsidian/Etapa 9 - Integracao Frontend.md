@@ -143,6 +143,26 @@ Na tela "Meus Clientes", um **"X"** ao lado de *Tentativa* (mesmo estilo do X de
 
 Total da suíte após estas mudanças: **111 testes**.
 
+### Monitoramento (EprocTracker) respeita o tema claro/escuro
+
+A tela de Monitoramento tinha o tema **escuro hardcoded** (`bg-[#0B192C]`,
+`bg-[#112240]`, `text-white`, `min-h-screen … -m-8`), ignorando o toggle sol/lua
+do rodapé do Sidebar. Foi reescrita no **mesmo idioma das demais telas**: base
+clara + variantes `dark:`, sem fundo full-bleed próprio (o fundo e o padding vêm
+do `<main>` em `App.jsx`). Os badges de triagem (VERMELHO/NORMAL/atenção) ganharam
+par claro/escuro. Verificado visualmente nos dois estados.
+
+### Concluir tarefa no widget Agenda/Tarefas
+
+Cada card de tarefa tem **concluir** (check, à esquerda do badge), além de adiar
+(relógio) e excluir (lixeira). O check chama `POST /api/tarefas/{id}/concluir`
+(rota da Etapa 5 — sem rota nova): **sucesso** remove o card (o GET default já
+filtra `concluida=false`) + **toast**; **erro** mostra um **toast vermelho** com a
+mensagem do backend e recarrega a lista (o card volta). Vale igual para
+**TAREFA DO SISTEMA** e **TAREFA DA GESTÃO** — a regra de ownership (dono ou
+gestão) é a mesma do adiar/excluir, já validada no backend. O toast do Dashboard
+passou a aceitar a variante `error` (vermelho) além de `success` (verde).
+
 ## Como rodar o demo
 
 1. `python backend/demo_seed.py` (cria Gerente + 2 CS + clientes + 1 alerta).
