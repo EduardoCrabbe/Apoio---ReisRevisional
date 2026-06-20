@@ -78,6 +78,10 @@ orientação do PROMPT_MESTRE: "escolha a opção mais simples e documente").
     feita na Etapa 9: nenhuma rota/frontend/seed a consome para leitura). Marcada
     com comentário no model; **não removida** para evitar migração e preservar os
     snapshots/lançamentos já gravados.
-  - As irmãs `Quitacao.protesto` e `Quitacao.consulta_processo` estão na mesma
-    situação (escritas, nunca lidas) — mantidas como estão por ora, à espera de
-    decisão conjunta antes de deprecar/remover.
+  - **`Customer.protesto` e `Customer.consulta_processo` também são as fontes
+    únicas.** Auditoria de uso refeita: `Quitacao.protesto` e
+    `Quitacao.consulta_processo` são *escritas* por `quitar()`/`demo_seed` como
+    snapshot, mas **não são lidas nem exibidas em lugar nenhum** (o `GET
+    /api/quitacoes` lê de `Customer`; o `QuitarOut` nem as retorna). Ambas marcadas
+    **DEPRECATED** no model (mesmo tratamento do `tarifas_restituiveis`); não
+    removidas, para evitar migração e preservar os snapshots já gravados.

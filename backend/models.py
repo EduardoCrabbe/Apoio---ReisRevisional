@@ -112,6 +112,11 @@ class Quitacao(Base):
     valor_pago = Column(Float, nullable=False)
     data_boleto = Column(Date, nullable=True)
     data_pagamento = Column(Date, nullable=True)
+    # DEPRECATED (Etapa 9): protesto e consulta_processo viraram atributos do
+    # CLIENTE (Customer.protesto / Customer.consulta_processo), fonte única editável
+    # na tela Quitações. Estas colunas ainda são ESCRITAS por quitar()/demo_seed como
+    # snapshot histórico, mas NÃO são lidas nem exibidas em lugar nenhum
+    # (rota/frontend/seed). Não usar como fonte. Ver docs/DECISOES.md.
     consulta_processo = Column(String, default="Ativa", nullable=False)  # Ativa | Excluída
     protesto = Column(Boolean, default=False, nullable=False)
     # DEPRECATED (Etapa 9): a fonte única de verdade de "tarifas restituíveis" passou
