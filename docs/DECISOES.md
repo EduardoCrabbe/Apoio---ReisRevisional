@@ -85,3 +85,40 @@ orientação do PROMPT_MESTRE: "escolha a opção mais simples e documente").
     /api/quitacoes` lê de `Customer`; o `QuitarOut` nem as retorna). Ambas marcadas
     **DEPRECATED** no model (mesmo tratamento do `tarifas_restituiveis`); não
     removidas, para evitar migração e preservar os snapshots já gravados.
+
+## Reversão da integração Eproc/Robô (2026-06-24)
+
+**Decisão:** a integração **Eproc/Robô foi removida do Apoio ao CS** (backend +
+frontend). A automação de monitoramento de processos **será reconstruída como
+projeto independente** no futuro.
+
+**Por quê:**
+- **CAPTCHA real bloqueou os testes com dados reais.** Em teste manual
+  (`HEADLESS=0`, 3 CPFs reais da planilha de contratos), o portal de consulta
+  pública do TJSP apresentou CAPTCHA ("Aguarde a verificação do captcha") em todas
+  as consultas; o scraper (DrissionPage, "bypass nativo") **não vence** esse
+  CAPTCHA. Nenhum processo foi aberto, nenhuma movimentação extraída.
+- **Volume incompatível.** A operação real é da ordem de **~2000 consultas/dia**,
+  inviável contra a **consulta pública anônima** do TJSP (rate limit / bloqueio por
+  excesso de requisições, além do CAPTCHA).
+- **Caminho futuro:** reconstruir como produto à parte, provavelmente via **acesso
+  autenticado / API do tribunal** (ex.: integração oficial), em vez de scraping da
+  consulta pública anônima.
+
+**O que foi removido do Apoio ao CS (backend + frontend):**
+- Backend: `routers/robo.py`, `tests/test_robo.py`, tabelas `RoboResultado`
+  (`robo_resultados`) e `RoboJob` (`robo_jobs`) do `models.py`, registro do router
+  em `main.py`, `ROBO_TOKEN` do `.env.example`, e a seed do alerta vermelho +
+  `RoboResultado` em `demo_seed.py`.
+- Frontend: páginas `EprocTracker.jsx` (Monitoramento) e `AlertasCriticos.jsx`,
+  suas rotas em `App.jsx`, os itens de menu no `Sidebar.jsx` e a tarja vermelha do
+  `Dashboard.jsx` (que dependia de `GET /api/robo/alertas`).
+
+**O que foi PRESERVADO (não confundir com a remoção):**
+- `agente-eproc/` — o agente/scraper **não foi tocado** (vira a base do projeto
+  futuro). Ver [[Etapa 8 - Agente Eproc]] (marcada como *revertida*, mantida por
+  valor histórico).
+- O **Radar de Prioridades** (`services/dashboard.py`) continua mesclando tarefas
+  CRÍTICA/URGENTE abertas (origem `manual` OU `sistema`) — filtra só por
+  classificação, **sem nada hardcoded para a origem do robô** —, então segue
+  servindo a feature de "tarefa da gestão".

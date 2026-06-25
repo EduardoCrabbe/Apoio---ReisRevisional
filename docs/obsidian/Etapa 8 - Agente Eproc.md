@@ -2,9 +2,18 @@
 tags: [etapa-8, agente-eproc, scraping, desacoplamento, lgpd]
 etapa: 8
 titulo: Agente Eproc
-status: concluida
+status: revertida
 data: 2026-06-15
 ---
+
+> [!warning] ⚠️ REVERTIDO em 2026-06-24 — ver [[ADR - Decisoes de Arquitetura]] / `docs/DECISOES.md`
+> A integração Eproc/Robô foi **removida do Apoio ao CS** (backend + frontend) em
+> 2026-06-24. O CAPTCHA real do TJSP bloqueou o teste com dados reais e o volume de
+> ~2000 consultas/dia é incompatível com a consulta pública anônima. A automação
+> será reconstruída como **projeto independente** no futuro (provavelmente via
+> acesso autenticado/API do tribunal, não scraping da consulta pública).
+> O conteúdo abaixo é mantido por **valor histórico/aprendizado** — não reflete o
+> estado atual do código. O agente em `agente-eproc/` **não foi apagado**.
 
 # Etapa 8 — Agente Eproc (desacoplado)
 

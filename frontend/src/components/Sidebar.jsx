@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Users, LayoutDashboard, Settings, LogOut, Activity, Trophy, Moon, Sun, Siren } from 'lucide-react';
+import { Users, LayoutDashboard, Settings, LogOut, Activity, Trophy, Moon, Sun } from 'lucide-react';
 import clsx from 'clsx';
 import { api } from '../services/api';
 import { onDataChanged } from '../services/refresh';
@@ -38,8 +38,6 @@ export default function Sidebar({ role, user, isDarkMode, toggleDarkMode, onLogo
     ...(!isManager ? [{ to: '/meus-clientes', icon: Users, label: 'Meus Clientes' }] : []),
     { to: '/quitacoes', icon: Activity, label: 'Quitações' },
     { to: '/bonus', icon: Trophy, label: 'Bônus e Comissões' },
-    { to: '/eproc-tracker', icon: Activity, label: 'Monitoramento' },
-    { to: '/alertas-criticos', icon: Siren, label: 'Alertas Críticos' },
     ...(isManager ? [{ to: '/configuracoes', icon: Settings, label: 'Configurações' }] : []),
   ];
 

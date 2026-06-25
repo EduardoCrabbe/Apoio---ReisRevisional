@@ -4,8 +4,6 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import AreaCS from './pages/AreaCS';
 import Bonus from './pages/Bonus';
-import EprocTracker from './pages/EprocTracker';
-import AlertasCriticos from './pages/AlertasCriticos';
 import Configuracoes from './pages/Configuracoes';
 import EquipeCS from './pages/EquipeCS';
 import Quitacoes from './pages/Quitacoes';
@@ -60,8 +58,6 @@ function App() {
               <Route path="/equipe-cs" element={<EquipeCS />} />
               <Route path="/quitacoes" element={<Quitacoes role={role} />} />
               <Route path="/bonus" element={<Bonus role={role} user={user} />} />
-              <Route path="/eproc-tracker" element={<EprocTracker user={user} />} />
-              <Route path="/alertas-criticos" element={<AlertasCriticos />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Routes>
           </div>

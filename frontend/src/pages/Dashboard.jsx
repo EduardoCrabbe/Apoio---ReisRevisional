@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import {
   AlertTriangle, CheckCircle2, Calendar as CalendarIcon, Clock, AlertCircle,
-  RefreshCw, PhoneForwarded, DollarSign, BellRing, PieChart, Trash2, ClipboardList,
+  RefreshCw, PhoneForwarded, DollarSign, PieChart, Trash2, ClipboardList,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { onDataChanged, notifyDataChanged } from '../services/refresh';
@@ -15,12 +15,10 @@ const STATS_VAZIO = {
 
 export default function Dashboard({ role }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
-  const navigate = useNavigate();
   const location = useLocation();
 
   const [stats, setStats] = useState(STATS_VAZIO);
   const [tarefas, setTarefas] = useState([]);
-  const [alertas, setAlertas] = useState(0);
   const [erro, setErro] = useState('');
   const [csList, setCsList] = useState([]); // CS ativos (só gestão usa)
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
@@ -52,28 +50,16 @@ export default function Dashboard({ role }) {
     }
   };
 
-  const fetchAlertas = async () => {
-    try {
-      const data = await api.get('/api/robo/alertas');
-      setAlertas(Array.isArray(data) ? data.length : 0);
-    } catch {
-      setAlertas(0);
-    }
-  };
-
   // Refaz o fetch a cada visita da rota (item 1: total não fica preso no valor
-  // antigo após criar CS/clientes) e periodicamente para os alertas.
+  // antigo após criar CS/clientes).
   useEffect(() => {
     fetchStats();
     fetchTarefas();
-    fetchAlertas();
-    const interval = setInterval(fetchAlertas, 60000);
-    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   // E também quando qualquer ação muda os dados (mesma fonte da Sidebar).
-  useEffect(() => onDataChanged(() => { fetchStats(); fetchTarefas(); fetchAlertas(); }), []);
+  useEffect(() => onDataChanged(() => { fetchStats(); fetchTarefas(); }), []);
 
   // Gestão pode atribuir tarefa a qualquer CS — carrega a lista de CS ativos.
   useEffect(() => {
@@ -160,35 +146,12 @@ export default function Dashboard({ role }) {
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Tarja de Alertas Críticos (Eproc) — momento cross-produto */}
-      {alertas > 0 && (
-        <div className="bg-red-600/95 border-b-4 border-brand-gold text-white px-6 py-4 rounded-2xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-white/20 p-2 rounded-full animate-pulse">
-              <BellRing className="w-6 h-6 text-brand-gold" />
-            </div>
-            <div>
-              <h3 className="font-bold text-lg text-brand-gold uppercase tracking-wider">Atenção Necessária!</h3>
-              <p className="text-sm font-medium">
-                O robô detectou <span className="font-bold underline">{alertas} alerta(s) crítico(s)</span> na sua carteira (busca e apreensão / mandados).
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => navigate('/alertas-criticos')}
-            className="bg-brand-gold text-brand-navy hover:bg-yellow-400 font-bold px-6 py-2.5 rounded-xl shadow-md transition-all whitespace-nowrap"
-          >
-            Verificar Agora
-          </button>
-        </div>
-      )}
-
       <header className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold text-brand-navy dark:text-white">Painel de Controle</h2>
           <p className="text-brand-bronze mt-1">Visão geral do comissionamento e saúde dos atendimentos.</p>
         </div>
-        <button onClick={() => { fetchStats(); fetchTarefas(); fetchAlertas(); }} className="flex items-center gap-2 bg-white dark:bg-[#112240] border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-600 dark:text-slate-300 px-4 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-colors">
+        <button onClick={() => { fetchStats(); fetchTarefas(); }} className="flex items-center gap-2 bg-white dark:bg-[#112240] border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-600 dark:text-slate-300 px-4 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-colors">
           <RefreshCw className="w-4 h-4" />
           Atualizar Dados
         </button>

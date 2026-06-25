@@ -146,29 +146,6 @@ class Tarefa(Base):
     concluida = Column(Boolean, default=False, nullable=False)
 
 
-class RoboJob(Base):
-    __tablename__ = "robo_jobs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(String, ForeignKey("customers.id_datajuri"), nullable=False)
-    status = Column(String, default="pendente", nullable=False)      # pendente | em_execucao | concluido | erro
-    solicitado_em = Column(DateTime, default=_utcnow, nullable=False)
-    concluido_em = Column(DateTime, nullable=True)
-    mensagem_erro = Column(Text, nullable=True)
-
-
-class RoboResultado(Base):
-    __tablename__ = "robo_resultados"
-
-    id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(String, ForeignKey("customers.id_datajuri"), nullable=False)
-    classe = Column(String, nullable=True)
-    data_movimentacao = Column(String, nullable=True)               # texto vindo do tribunal
-    descricao = Column(Text, nullable=True)
-    triagem = Column(String, nullable=False)                        # NORMAL | "🚨 ALERTA VERMELHO"
-    recebido_em = Column(DateTime, default=_utcnow, nullable=False)
-
-
 class SystemSettings(Base):
     __tablename__ = "system_settings"
 

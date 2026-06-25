@@ -22,7 +22,6 @@ from routers.tarefas import router as tarefas_router
 from routers.dashboard import router as dashboard_router
 from routers.equipe import router as equipe_router
 from routers.ia import router as ia_router
-from routers.robo import router as robo_router
 
 # Carrega o .env (não sobrescreve variáveis já definidas no ambiente).
 load_dotenv()
@@ -66,7 +65,6 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(equipe_router)
     app.include_router(ia_router)
-    app.include_router(robo_router)
 
     return app
 
