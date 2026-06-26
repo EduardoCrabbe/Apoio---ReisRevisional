@@ -163,6 +163,40 @@ mensagem do backend e recarrega a lista (o card volta). Vale igual para
 gestão) é a mesma do adiar/excluir, já validada no backend. O toast do Dashboard
 passou a aceitar a variante `error` (vermelho) além de `success` (verde).
 
+## Gestão de carteira por CS (feedback da gerência)
+
+Três ajustes pedidos pela gerência (sem tocar em `agente-eproc/`):
+
+### 1. Importação de planilha é exclusiva da gestão
+`POST /api/clientes/importar` agora exige **`require_role("Gerente","Supervisor")`**
+— **CS recebe 403**. O botão "Importar Planilha" **saiu da AreaCS** (Meus Clientes)
+e passou para a tela de drill-down da gestão (item 3), que envia `cs_id` da carteira
+sendo importada. Teste: CS chamando importar → 403.
+
+### 2. Exclusão de cliente preserva os ganhos
+`DELETE /api/clientes/{id}` (ownership inalterado: CS só os seus, gestão qualquer)
+passou a chamar `remover_cliente()`, que **preserva** `attendances`/`bonus_entries`
+(`customer_id` → NULL, para o CS não perder comissões) e **apaga**
+`quitacoes`/`tarefas` do cliente. `Attendance.customer_id` virou nullable
+(migração local: apagar `database.db` + reseed). Detalhe e racional em
+`docs/DECISOES.md`. O botão de excluir (lixeira) da AreaCS já funcionava e foi
+mantido; o mesmo botão (confirmação + toast) entra na tela da gestão.
+
+### 3. Drill-down: gestão vê a carteira de cada CS
+Em **Equipe CS**, o **nome de cada CS virou link** → navega para
+`/gestao/clientes/:cs_id` (rota protegida por papel em `App.jsx`). A nova
+**`GestaoClientes.jsx`** espelha a AreaCS (KPIs total/atendidos/tentativas/não
+atendidos + tabela), mas:
+- Título **"Clientes de [nome do CS]"** + botão **Voltar**;
+- Lista via `GET /api/clientes?cs_id=:cs_id` (já existia, Etapa 3);
+- **"Importar Planilha"** (envia `cs_id`) e **"Novo Cliente"** (POST com `cs_id`
+  pré-preenchido) no topo;
+- **Excluir** por linha (mesma UX da AreaCS);
+- **SEM** Atender/Tentativa/Quitar — a gestão observa e gerencia, não atende
+  (atendimento/tentativas aparecem só como números read-only).
+
+Total da suíte após estas mudanças: **112 testes**.
+
 ## Como rodar o demo
 
 1. `python backend/demo_seed.py` (cria Gerente + 2 CS + clientes + 1 alerta).

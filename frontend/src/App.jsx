@@ -6,6 +6,7 @@ import AreaCS from './pages/AreaCS';
 import Bonus from './pages/Bonus';
 import Configuracoes from './pages/Configuracoes';
 import EquipeCS from './pages/EquipeCS';
+import GestaoClientes from './pages/GestaoClientes';
 import Quitacoes from './pages/Quitacoes';
 import Login from './pages/Login';
 import { getUser, getToken, clearSession } from './services/api';
@@ -56,6 +57,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard role={role} user={user} />} />
               <Route path="/meus-clientes" element={<AreaCS user={user} role={role} />} />
               <Route path="/equipe-cs" element={<EquipeCS />} />
+              <Route path="/gestao/clientes/:cs_id" element={role !== 'CS' ? <GestaoClientes /> : <Navigate to="/dashboard" replace />} />
               <Route path="/quitacoes" element={<Quitacoes role={role} />} />
               <Route path="/bonus" element={<Bonus role={role} user={user} />} />
               <Route path="/configuracoes" element={<Configuracoes />} />

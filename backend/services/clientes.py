@@ -95,6 +95,26 @@ def listar_clientes(db: Session, user: models.User, cs_id):
     return q.all()
 
 
+def remover_cliente(db: Session, cliente: models.Customer) -> None:
+    """Exclui o cliente preservando os ganhos já lançados.
+
+    - attendances e bonus_entries do cliente: `customer_id` → NULL (PRESERVADOS,
+      para o CS não perder comissões/bônus já ganhos).
+    - quitacoes e tarefas do cliente: APAGADAS (não fazem sentido sem o cliente).
+    """
+    cid = cliente.id_datajuri
+    db.query(models.Attendance).filter(models.Attendance.customer_id == cid).update(
+        {models.Attendance.customer_id: None}, synchronize_session=False)
+    db.query(models.BonusEntry).filter(models.BonusEntry.customer_id == cid).update(
+        {models.BonusEntry.customer_id: None}, synchronize_session=False)
+    db.query(models.Quitacao).filter(models.Quitacao.customer_id == cid).delete(
+        synchronize_session=False)
+    db.query(models.Tarefa).filter(models.Tarefa.cliente_id == cid).delete(
+        synchronize_session=False)
+    db.delete(cliente)
+    db.commit()
+
+
 def criar_cliente(db: Session, user: models.User, dados) -> models.Customer:
     cs_id = resolver_cs_id(user, dados.cs_id)
     if db.get(models.Customer, dados.id_datajuri) is not None:

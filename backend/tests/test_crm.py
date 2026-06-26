@@ -336,7 +336,24 @@ def test_reset_zera_mas_preserva_lancamentos(client, db):
 
 # ------------------------------------------------------------------- importação
 
+def test_importar_cs_retorna_403(client, db):
+    # Importação é exclusiva de Gerente/Supervisor (regra da gerência).
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    conteudo = planilha_bytes(
+        ["Código DJ", "Cliente", "UF", "Tipo de contrato", "Processo?"],
+        [["D1", "João", "SP", "Veículo", "Não"]],
+    )
+    r = client.post(
+        "/api/clientes/importar",
+        files={"file": ("base.xlsx", conteudo, XLSX_MIME)},
+        data={"cs_id": str(cs.id)},
+        headers=headers(cs),
+    )
+    assert r.status_code == 403
+
+
 def test_importar_sem_coluna_cliente_retorna_422(client, db):
+    ger = criar_usuario(db, "Gerente", sufixo="ger")
     cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
     conteudo = planilha_bytes(
         ["Código DJ", "UF", "Tipo de contrato", "Processo?"],  # falta "Cliente"
@@ -345,13 +362,15 @@ def test_importar_sem_coluna_cliente_retorna_422(client, db):
     r = client.post(
         "/api/clientes/importar",
         files={"file": ("base.xlsx", conteudo, XLSX_MIME)},
-        headers=headers(cs),
+        data={"cs_id": str(cs.id)},
+        headers=headers(ger),
     )
     assert r.status_code == 422
     assert "Cliente" in r.json()["detail"]
 
 
 def test_importar_grava_apenas_primeiro_nome(client, db):
+    ger = criar_usuario(db, "Gerente", sufixo="ger")
     cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
     conteudo = planilha_bytes(
         ["Código DJ", "Cliente", "UF", "Tipo de contrato", "Processo?"],
@@ -360,16 +379,18 @@ def test_importar_grava_apenas_primeiro_nome(client, db):
     r = client.post(
         "/api/clientes/importar",
         files={"file": ("base.xlsx", conteudo, XLSX_MIME)},
-        headers=headers(cs),
+        data={"cs_id": str(cs.id)},
+        headers=headers(ger),
     )
     assert r.status_code == 200, r.text
     cliente = db.get(models.Customer, "D100")
     assert cliente is not None
     assert cliente.first_name == "João"
-    assert cliente.cs_id == cs.id
+    assert cliente.cs_id == cs.id  # atribuído ao CS informado pela gestão
 
 
 def test_importar_tolerante_a_acento_e_caixa(client, db):
+    ger = criar_usuario(db, "Gerente", sufixo="ger")
     cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
     conteudo = planilha_bytes(
         ["codigo dj", "CLIENTE", "uf", "tipo de contrato", "processo?"],  # caixa/acento variados
@@ -378,7 +399,60 @@ def test_importar_tolerante_a_acento_e_caixa(client, db):
     r = client.post(
         "/api/clientes/importar",
         files={"file": ("base.xlsx", conteudo, XLSX_MIME)},
-        headers=headers(cs),
+        data={"cs_id": str(cs.id)},
+        headers=headers(ger),
     )
     assert r.status_code == 200, r.text
     assert db.get(models.Customer, "D200").first_name == "Maria"
+
+
+# --------------------------------------------------------------------- exclusão
+
+def test_cs_deleta_cliente_proprio_preserva_financeiro(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    db.add(models.Attendance(user_id=cs.id, customer_id="C1", timestamp=agora(), commission_value=1.5))
+    db.add(models.BonusEntry(user_id=cs.id, customer_id="C1", tipo="VideoDepoimento", valor=15.0, timestamp=agora()))
+    db.add(models.Quitacao(customer_id="C1", cs_id=cs.id, valor_original=1000, valor_pago=500, pagamento="à vista"))
+    db.add(models.Tarefa(criador_id=cs.id, responsavel_id=cs.id, cliente_id="C1", setor="Atendimento", classificacao="REGULAR"))
+    db.commit()
+
+    r = client.delete("/api/clientes/C1", headers=headers(cs))
+    assert r.status_code == 200, r.text
+
+    assert db.get(models.Customer, "C1") is None
+    # attendances e bonus PRESERVADOS com customer_id = NULL (comissões não se perdem)
+    att = db.query(models.Attendance).filter_by(user_id=cs.id).all()
+    assert len(att) == 1 and att[0].customer_id is None and att[0].commission_value == 1.5
+    bon = db.query(models.BonusEntry).filter_by(user_id=cs.id).all()
+    assert len(bon) == 1 and bon[0].customer_id is None and bon[0].valor == 15.0
+    # quitações e tarefas do cliente APAGADAS
+    assert db.query(models.Quitacao).filter_by(customer_id="C1").count() == 0
+    assert db.query(models.Tarefa).filter_by(cliente_id="C1").count() == 0
+
+
+def test_cs_deleta_cliente_de_outro_cs_retorna_403(client, db):
+    cs1 = criar_usuario(db, "CS", level_cs=2, sufixo="cs1")
+    cs2 = criar_usuario(db, "CS", level_cs=2, sufixo="cs2")
+    criar_cliente(db, "C1", cs_id=cs1.id)
+    r = client.delete("/api/clientes/C1", headers=headers(cs2))
+    assert r.status_code == 403
+    assert db.get(models.Customer, "C1") is not None  # não removido
+
+
+def test_gestao_deleta_qualquer_cliente(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    ger = criar_usuario(db, "Gerente", sufixo="ger")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    r = client.delete("/api/clientes/C1", headers=headers(ger))
+    assert r.status_code == 200, r.text
+    assert db.get(models.Customer, "C1") is None
+
+
+def test_get_clientes_nao_retorna_cliente_deletado(client, db):
+    cs = criar_usuario(db, "CS", level_cs=2, sufixo="cs")
+    criar_cliente(db, "C1", cs_id=cs.id)
+    criar_cliente(db, "C2", cs_id=cs.id)
+    client.delete("/api/clientes/C1", headers=headers(cs))
+    r = client.get("/api/clientes", headers=headers(cs))
+    assert {c["id_datajuri"] for c in r.json()} == {"C2"}

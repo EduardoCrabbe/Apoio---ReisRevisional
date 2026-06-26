@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  UploadCloud, Search, CheckCircle, MessageCircle, Filter, X, Clock, AlertOctagon,
-  Users, UserPlus, PhoneForwarded, PieChart, Trash2, RotateCcw, Loader2,
+  Search, CheckCircle, MessageCircle, Filter, X, Clock, AlertOctagon,
+  Users, UserPlus, PhoneForwarded, PieChart, Trash2, RotateCcw,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { notifyDataChanged } from '../services/refresh';
@@ -28,9 +28,7 @@ export default function AreaCS({ role }) {
 
   const [modalNovoCliente, setModalNovoCliente] = useState(false);
   const [novoCliente, setNovoCliente] = useState({ id: '', nome: '', uf: 'SP', contrato: 'Veículo', tem_processo: 'Não', criticidade: 'Regular' });
-  const [uploadLoading, setUploadLoading] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-  const fileInputRef = useRef(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -49,25 +47,6 @@ export default function AreaCS({ role }) {
       setClientes(Array.isArray(data) ? data : []);
     } catch (e) {
       showToast(e.message, 'error');
-    }
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    setUploadLoading(true);
-    try {
-      const data = await api.post('/api/clientes/importar', formData);
-      await fetchClientes();
-      showToast(data.message || 'Planilha importada com sucesso!');
-      notifyDataChanged();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setUploadLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -231,12 +210,6 @@ export default function AreaCS({ role }) {
           <button onClick={() => setModalNovoCliente(true)} className="bg-brand-navy text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-blue-900 flex items-center gap-2 transition-colors">
             <UserPlus className="w-5 h-5 text-brand-gold" /> Novo Cliente
           </button>
-          <label className={`bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-brand-navy dark:text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-slate-50 flex items-center gap-2 transition-colors ${uploadLoading ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
-            {uploadLoading
-              ? <><Loader2 className="w-5 h-5 text-brand-bronze animate-spin" />Importando...</>
-              : <><UploadCloud className="w-5 h-5 text-brand-bronze" />Importar Planilha</>}
-            <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileUpload} disabled={uploadLoading} />
-          </label>
         </div>
       </header>
 

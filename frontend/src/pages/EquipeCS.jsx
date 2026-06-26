@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Users, TrendingUp, Award, UserPlus, X, Trash2, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function EquipeCS() {
+  const navigate = useNavigate();
   const [equipe, setEquipe] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
@@ -135,7 +137,11 @@ export default function EquipeCS() {
             <tbody className="divide-y divide-slate-100">
               {equipe.map((cs) => (
                 <tr key={cs.cs_id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4"><div className="text-sm font-bold text-brand-navy">{cs.nome}</div></td>
+                  <td className="px-6 py-4">
+                    <button onClick={() => navigate(`/gestao/clientes/${cs.cs_id}`)} className="text-sm font-bold text-brand-navy hover:text-brand-gold hover:underline transition-colors text-left" title="Ver carteira deste CS">
+                      {cs.nome}
+                    </button>
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <select value={cs.nivel ?? 1} onChange={(e) => handleNivel(cs.cs_id, e.target.value)} className="border border-slate-200 rounded p-1.5 font-bold text-brand-navy bg-white cursor-pointer shadow-sm focus:outline-none focus:border-brand-gold">
                       {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>Nível {n}</option>)}

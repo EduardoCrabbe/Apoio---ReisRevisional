@@ -86,6 +86,28 @@ orientação do PROMPT_MESTRE: "escolha a opção mais simples e documente").
     **DEPRECATED** no model (mesmo tratamento do `tarifas_restituiveis`); não
     removidas, para evitar migração e preservar os snapshots já gravados.
 
+## Exclusão de cliente preserva os ganhos (2026-06-24)
+
+Ao excluir um cliente (`DELETE /api/clientes/{id}`), o sistema **não apaga em
+cascata** tudo do cliente. A regra (`services.clientes.remover_cliente`):
+
+- **`attendances` e `bonus_entries`** do cliente → `customer_id` vira **NULL**
+  (registros **PRESERVADOS**). Os valores de comissão/bônus são congelados no
+  lançamento (ADR-1) e pertencem ao **CS**, não ao cliente — apagá-los faria o CS
+  perder ganhos já apurados. Por isso `Attendance.customer_id` passou a ser
+  **nullable** (o `BonusEntry.customer_id` já era).
+- **`quitacoes` e `tarefas`** do cliente → **APAGADAS**. Não fazem sentido sem o
+  cliente (uma quitação é do contrato daquele cliente; uma tarefa de
+  acompanhamento perde o objeto). A quitação não é um "ganho" em si — o bônus de
+  quitação associado é um `BonusEntry`, que é preservado pela regra acima.
+
+**Ownership (inalterado, Etapa 3):** CS exclui só cliente próprio (403 se alheio);
+Gerente/Supervisor excluem qualquer um (`exigir_pode_editar`).
+
+> Migração local: como `Attendance.customer_id` mudou de NOT NULL → nullable e o
+> `create_all()` não altera tabela existente, apagar `backend/database.db` e rodar
+> `demo_seed.py` recria com o novo esquema.
+
 ## Reversão da integração Eproc/Robô (2026-06-24)
 
 **Decisão:** a integração **Eproc/Robô foi removida do Apoio ao CS** (backend +

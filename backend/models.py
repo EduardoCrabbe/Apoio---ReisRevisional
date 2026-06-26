@@ -85,7 +85,9 @@ class Attendance(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    customer_id = Column(String, ForeignKey("customers.id_datajuri"), nullable=False)
+    # nullable: ao excluir um cliente, o atendimento é PRESERVADO com customer_id=NULL
+    # (o CS não perde a comissão já ganha). Ver remover_cliente() e docs/DECISOES.md.
+    customer_id = Column(String, ForeignKey("customers.id_datajuri"), nullable=True)
     timestamp = Column(DateTime, default=_utcnow, nullable=False)
     commission_value = Column(Float, nullable=False)                 # CONGELADO no lançamento
 

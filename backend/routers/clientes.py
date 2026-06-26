@@ -111,7 +111,7 @@ async def importar(
     file: UploadFile = File(...),
     cs_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(require_role("Gerente", "Supervisor")),  # CS → 403
 ):
     alvo_cs = svc.resolver_cs_id(user, cs_id)
     conteudo = await file.read()
@@ -163,9 +163,8 @@ def remover(
     user: models.User = Depends(get_current_user),
 ):
     cliente = svc.buscar_cliente(db, customer_id)
-    svc.exigir_pode_editar(cliente, user)
-    db.delete(cliente)
-    db.commit()
+    svc.exigir_pode_editar(cliente, user)  # CS só os seus; gestão qualquer
+    svc.remover_cliente(db, cliente)       # preserva attendances/bonus; apaga quitações/tarefas
     return {"message": "Cliente removido."}
 
 
