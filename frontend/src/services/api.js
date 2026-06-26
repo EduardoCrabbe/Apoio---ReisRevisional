@@ -36,6 +36,35 @@ export function setSession(token, user) {
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  clearApiCache(); // logout: descarta todo o cache em memória
+}
+
+// ------------------------------------------------------------------ cache (GET)
+//
+// Cache em memória SÓ para GET, por URL completa (inclui query string). TTL por
+// rota (ms); qualquer mutação bem-sucedida (POST/PUT/DELETE) limpa o cache inteiro
+// — ver request() — e o notifyDataChanged() também invalida (ver services/refresh).
+
+const TTL_POR_ROTA = {
+  '/api/dashboard/stats': 20000,
+  '/api/equipe': 30000,
+  '/api/comissoes/tabela': 120000,
+  '/api/clientes': 15000,
+  '/api/tarefas': 15000,
+  '/api/bonus/extrato': 20000,
+  '/api/quitacoes': 20000,
+};
+const TTL_PADRAO = 30000;
+
+const _cache = new Map(); // url -> { data, timestamp }
+
+function _ttl(path) {
+  const base = path.split('?')[0];
+  return TTL_POR_ROTA[base] ?? TTL_PADRAO;
+}
+
+export function clearApiCache() {
+  _cache.clear();
 }
 
 export class ApiError extends Error {
@@ -57,8 +86,17 @@ function extrairDetalhe(data, status) {
   return `Erro ${status}.`;
 }
 
-async function request(path, { method = 'GET', body, headers = {} } = {}) {
+async function request(path, { method = 'GET', body, headers = {}, skipCache = false } = {}) {
   const token = getToken();
+
+  // Cache hit (só GET): devolve a cópia quente se ainda dentro do TTL.
+  if (method === 'GET' && !skipCache) {
+    const hit = _cache.get(path);
+    if (hit && Date.now() - hit.timestamp < _ttl(path)) {
+      return hit.data;
+    }
+  }
+
   const opts = { method, headers: { ...headers } };
 
   if (body !== undefined && body !== null) {
@@ -104,6 +142,12 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
 
   if (!res.ok) {
     throw new ApiError(extrairDetalhe(data, res.status), res.status, data);
+  }
+
+  if (method === 'GET') {
+    _cache.set(path, { data, timestamp: Date.now() }); // memoriza a resposta fresca
+  } else {
+    clearApiCache(); // mutação OK → todo GET cacheado pode estar velho
   }
   return data;
 }

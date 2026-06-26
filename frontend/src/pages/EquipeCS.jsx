@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, TrendingUp, Award, UserPlus, X, Trash2, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
+import { Money } from '../contexts/PrivacidadeContext';
+import { SkeletonRows } from '../components/Skeleton';
 
 export default function EquipeCS() {
   const navigate = useNavigate();
@@ -111,13 +113,13 @@ export default function EquipeCS() {
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
           <div className="p-3 bg-brand-cream rounded-xl text-brand-bronze"><Award className="w-6 h-6" /></div>
-          <div><p className="text-sm font-bold text-slate-500">Ganhos da Equipe (mês)</p><p className="text-2xl font-bold text-brand-navy">{fmt(totalGanhos)}</p></div>
+          <div><p className="text-sm font-bold text-slate-500">Ganhos da Equipe (mês)</p><p className="text-2xl font-bold text-brand-navy"><Money value={totalGanhos} format={fmt} /></p></div>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden overflow-x-auto">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 text-slate-400 p-12"><Loader2 className="w-5 h-5 animate-spin" /> Carregando equipe...</div>
+          <SkeletonRows rows={3} cols={4} />
         ) : equipe.length === 0 ? (
           <div className="p-12 text-center text-slate-500">Nenhum CS cadastrado ainda.</div>
         ) : (
@@ -151,7 +153,7 @@ export default function EquipeCS() {
                   <td className="px-6 py-4 text-sm text-emerald-600 font-bold text-center">{cs.atendidos} <span className="text-xs font-normal text-emerald-500/70">({cs.atendidosPct}%)</span></td>
                   <td className="px-6 py-4 text-sm text-red-500 font-bold text-center">{cs.faltam} <span className="text-xs font-normal text-red-400/70">({cs.faltamPct}%)</span></td>
                   <td className="px-6 py-4 text-sm font-bold text-indigo-600 text-center">{cs.quitacoesMes}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-brand-navy text-right">{fmt(cs.ganhosMes)}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-brand-navy text-right"><Money value={cs.ganhosMes} format={fmt} /></td>
                   <td className="px-6 py-4 text-right">
                     <button onClick={() => handleDelete(cs.cs_id)} className="text-red-400 hover:text-red-600 transition-colors p-1" title="Desativar CS"><Trash2 className="w-5 h-5" /></button>
                   </td>
@@ -169,7 +171,7 @@ export default function EquipeCS() {
                   {totalFaltam} <span className="text-xs font-normal text-red-500/70">({pct(totalFaltam)}%)</span>
                 </td>
                 <td className="px-6 py-4 text-sm text-center text-indigo-700">{totalQuitacoes}</td>
-                <td className="px-6 py-4 text-sm text-right">{fmt(totalGanhos)}</td>
+                <td className="px-6 py-4 text-sm text-right"><Money value={totalGanhos} format={fmt} /></td>
                 <td className="px-6 py-4"></td>
               </tr>
             </tfoot>

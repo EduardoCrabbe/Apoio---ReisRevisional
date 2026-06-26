@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeft, UploadCloud, Search, Filter, X, AlertOctagon, Users, UserPlus,
   PhoneForwarded, PieChart, Trash2, CheckCircle, Loader2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { notifyDataChanged } from '../services/refresh';
+import { SkeletonRows } from '../components/Skeleton';
 
 /**
  * Drill-down da gestão: carteira de UM CS específico (Gerente/Supervisor).
@@ -15,9 +17,13 @@ import { notifyDataChanged } from '../services/refresh';
 export default function GestaoClientes() {
   const { cs_id } = useParams();
   const navigate = useNavigate();
+  const reduce = useReducedMotion();
+  const tap = reduce ? undefined : { scale: 0.97 };
 
   const [clientes, setClientes] = useState([]);
   const [nomeCS, setNomeCS] = useState('');
+  const [loading, setLoading] = useState(true); // skeleton só na primeira carga
+  const [busy, setBusy] = useState(() => new Set());
   const [busca, setBusca] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('Todos');
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -37,6 +43,8 @@ export default function GestaoClientes() {
       setClientes(Array.isArray(data) ? data : []);
     } catch (e) {
       showToast(e.message, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -79,6 +87,8 @@ export default function GestaoClientes() {
 
   const handleExcluir = async (id) => {
     if (!window.confirm('Tem certeza que deseja excluir este cliente?')) return;
+    if (busy.has(`del-${id}`)) return; // previne duplo clique
+    setBusy((p) => new Set(p).add(`del-${id}`));
     const anterior = clientes;
     setClientes((prev) => prev.filter((c) => c.id_datajuri !== id)); // otimista
     try {
@@ -88,6 +98,8 @@ export default function GestaoClientes() {
     } catch (err) {
       setClientes(anterior); // reverte
       showToast(err.message, 'error');
+    } finally {
+      setBusy((p) => { const n = new Set(p); n.delete(`del-${id}`); return n; });
     }
   };
 
@@ -152,9 +164,9 @@ export default function GestaoClientes() {
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => setModalNovoCliente(true)} className="bg-brand-navy text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-blue-900 flex items-center gap-2 transition-colors">
+          <motion.button whileTap={tap} onClick={() => setModalNovoCliente(true)} className="bg-brand-navy text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-blue-900 flex items-center gap-2 transition-colors">
             <UserPlus className="w-5 h-5 text-brand-gold" /> Novo Cliente
-          </button>
+          </motion.button>
           <label className={`bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-brand-navy dark:text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-slate-50 flex items-center gap-2 transition-colors ${uploadLoading ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
             {uploadLoading
               ? <><Loader2 className="w-5 h-5 text-brand-bronze animate-spin" />Importando...</>
@@ -205,6 +217,7 @@ export default function GestaoClientes() {
         </div>
 
         <div className="overflow-x-auto">
+          {loading ? <SkeletonRows rows={4} cols={5} /> : (<>
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
               <tr className="bg-brand-cream dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 text-brand-bronze text-xs uppercase tracking-wider">
@@ -219,14 +232,13 @@ export default function GestaoClientes() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {clientesVisiveis.map((cliente) => {
-                const isCritical = cliente.criticidade === 'Crítico';
+                const delBusy = busy.has(`del-${cliente.id_datajuri}`);
                 return (
-                  <tr key={cliente.id_datajuri} className={`transition-colors ${isCritical ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-slate-50 dark:bg-[#0B192C]'}`}>
+                  <tr key={cliente.id_datajuri} className="transition-colors hover:bg-slate-50 dark:bg-[#0B192C]">
                     <td className="px-4 py-4 text-sm font-medium text-slate-500 dark:text-slate-400">{cliente.id_datajuri}</td>
                     <td className="px-4 py-4">
-                      <div className={`text-sm font-bold flex items-center gap-2 ${isCritical ? 'text-red-700' : 'text-brand-navy dark:text-white'}`}>
+                      <div className="text-sm font-bold flex items-center gap-2 text-brand-navy dark:text-white">
                         {cliente.first_name}
-                        {isCritical && <AlertOctagon className="w-3.5 h-3.5 text-red-500" />}
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">{cliente.uf}</div>
                     </td>
@@ -245,9 +257,9 @@ export default function GestaoClientes() {
                     <td className="px-4 py-4 text-center text-sm font-bold text-emerald-600">{cliente.contatos || 0}</td>
                     <td className="px-4 py-4 text-center text-sm font-bold text-orange-600">{cliente.tentativas || 0}</td>
                     <td className="px-4 py-4 text-right">
-                      <button onClick={() => handleExcluir(cliente.id_datajuri)} className="p-1.5 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 rounded-lg shadow-sm transition-all" title="Excluir Cliente">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <motion.button whileTap={tap} onClick={() => handleExcluir(cliente.id_datajuri)} disabled={delBusy} className="p-1.5 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 rounded-lg shadow-sm transition-all disabled:opacity-60" title="Excluir Cliente">
+                        {delBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      </motion.button>
                     </td>
                   </tr>
                 );
@@ -260,11 +272,12 @@ export default function GestaoClientes() {
               <p>Nenhum cliente nesta carteira. Importe a planilha do DataJuri ou adicione manualmente.</p>
             </div>
           )}
+          </>)}
         </div>
       </div>
 
       {toast.show && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/80 dark:border-red-700 dark:text-red-200' : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/80 dark:border-emerald-700 dark:text-emerald-200'}`}>
+        <div className={`toast-in fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/80 dark:border-red-700 dark:text-red-200' : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/80 dark:border-emerald-700 dark:text-emerald-200'}`}>
           {toast.type === 'error' ? <AlertOctagon className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
           <span className="font-medium text-sm">{toast.message}</span>
         </div>

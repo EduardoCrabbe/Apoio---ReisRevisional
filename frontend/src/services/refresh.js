@@ -8,6 +8,8 @@
  * Dashboard) escuta e refaz o fetch.
  */
 
+import { clearApiCache } from './api';
+
 const listeners = new Set();
 
 export function onDataChanged(fn) {
@@ -16,6 +18,7 @@ export function onDataChanged(fn) {
 }
 
 export function notifyDataChanged() {
+  clearApiCache(); // os dados mudaram: invalida o cache ANTES de avisar os ouvintes
   listeners.forEach((fn) => {
     try {
       fn();

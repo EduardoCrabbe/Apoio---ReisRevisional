@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, FileText, Download, Calculator, Filter, Loader2, AlertOctagon } from 'lucide-react';
+import { CheckCircle2, FileText, Download, Calculator, Filter, AlertOctagon } from 'lucide-react';
 import { api } from '../services/api';
 import { notifyDataChanged } from '../services/refresh';
+import { SkeletonRows } from '../components/Skeleton';
 
 const PROTESTO_OPCOES = ['Sim', 'Não possui', 'Cliente ciente'];
 const SELECT_CLS = 'text-xs border border-slate-200 dark:border-slate-700 rounded p-1 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none cursor-pointer font-bold';
@@ -94,7 +95,7 @@ export default function Quitacoes({ role }) {
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden overflow-x-auto">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 text-slate-400 p-12"><Loader2 className="w-5 h-5 animate-spin" /> Carregando quitações...</div>
+          <SkeletonRows rows={3} cols={5} />
         ) : (
           <table className="w-full text-left border-collapse min-w-[1100px]">
             <thead>
@@ -181,7 +182,7 @@ export default function Quitacoes({ role }) {
       </div>
 
       {toast.show && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+        <div className={`toast-in fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
           {toast.type === 'error' ? <AlertOctagon className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
           <span className="font-medium text-sm">{toast.message}</span>
         </div>

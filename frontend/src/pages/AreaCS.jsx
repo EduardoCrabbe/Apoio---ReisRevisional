@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   Search, CheckCircle, MessageCircle, Filter, X, Clock, AlertOctagon,
-  Users, UserPlus, PhoneForwarded, PieChart, Trash2, RotateCcw,
+  Users, UserPlus, PhoneForwarded, PieChart, Trash2, RotateCcw, Loader2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { notifyDataChanged } from '../services/refresh';
+import { SkeletonRows } from '../components/Skeleton';
 
 // Backend grava datetime UTC naive (sem 'Z'); o JS interpretaria como local.
 // Forçamos UTC para o timer de 72h ficar correto.
@@ -17,11 +19,21 @@ function parseUTC(iso) {
 
 export default function AreaCS({ role }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
+  const reduce = useReducedMotion();
+  const tap = reduce ? undefined : { scale: 0.97 };
 
   const [clientes, setClientes] = useState([]);
+  const [loading, setLoading] = useState(true); // skeleton só na primeira carga
+  const [busy, setBusy] = useState(() => new Set()); // ações por linha em andamento
   const [busca, setBusca] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('Todos');
   const [now, setNow] = useState(Date.now());
+
+  const withBusy = async (chave, fn) => {
+    if (busy.has(chave)) return; // previne duplo clique
+    setBusy((p) => new Set(p).add(chave));
+    try { await fn(); } finally { setBusy((p) => { const n = new Set(p); n.delete(chave); return n; }); }
+  };
 
   const [modalQuitar, setModalQuitar] = useState(null);
   const [dadosQuitar, setDadosQuitar] = useState({ valorOriginal: '', valorPago: '', pagamento: '', dataBoleto: '', dataPagamento: '' });
@@ -47,6 +59,8 @@ export default function AreaCS({ role }) {
       setClientes(Array.isArray(data) ? data : []);
     } catch (e) {
       showToast(e.message, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -66,11 +80,11 @@ export default function AreaCS({ role }) {
     }
   };
 
-  const handleAtendimento = (id) =>
+  const handleAtendimento = (id) => withBusy(`at-${id}`, () =>
     acaoOtimista(
       (prev) => prev.map((c) => c.id_datajuri === id ? { ...c, contatos: (c.contatos || 0) + 1, ultimo_contato: new Date().toISOString() } : c),
       () => api.post(`/api/clientes/${id}/atendimento`),
-    );
+    ));
 
   const handleDesfazer = (id) =>
     acaoOtimista(
@@ -78,11 +92,11 @@ export default function AreaCS({ role }) {
       () => api.del(`/api/clientes/${id}/atendimento`),
     );
 
-  const handleTentativa = (id) =>
+  const handleTentativa = (id) => withBusy(`tent-${id}`, () =>
     acaoOtimista(
       (prev) => prev.map((c) => c.id_datajuri === id ? { ...c, tentativas: (c.tentativas || 0) + 1 } : c),
       () => api.post(`/api/clientes/${id}/tentativa`),
-    );
+    ));
 
   const handleDesfazerTentativa = (id) =>
     acaoOtimista(
@@ -92,11 +106,11 @@ export default function AreaCS({ role }) {
 
   const handleExcluir = (id) => {
     if (!window.confirm('Tem certeza que deseja excluir este cliente?')) return;
-    acaoOtimista(
+    withBusy(`del-${id}`, () => acaoOtimista(
       (prev) => prev.filter((c) => c.id_datajuri !== id),
       () => api.del(`/api/clientes/${id}`),
       'Cliente removido.',
-    );
+    ));
   };
 
   const handleChangeField = (id, campo, valor) =>
@@ -203,13 +217,13 @@ export default function AreaCS({ role }) {
         </div>
         <div className="flex gap-3">
           {isManager && (
-            <button onClick={handleResetMensal} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-xl font-bold shadow-sm hover:bg-red-500 hover:text-white flex items-center gap-2 transition-all" title="Zerar atendimentos e tentativas do mês">
+            <motion.button whileTap={tap} onClick={handleResetMensal} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-xl font-bold shadow-sm hover:bg-red-500 hover:text-white flex items-center gap-2 transition-all" title="Zerar atendimentos e tentativas do mês">
               <RotateCcw className="w-5 h-5" /> Reset Mensal
-            </button>
+            </motion.button>
           )}
-          <button onClick={() => setModalNovoCliente(true)} className="bg-brand-navy text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-blue-900 flex items-center gap-2 transition-colors">
+          <motion.button whileTap={tap} onClick={() => setModalNovoCliente(true)} className="bg-brand-navy text-white px-4 py-2 rounded-xl font-medium shadow-sm hover:bg-blue-900 flex items-center gap-2 transition-colors">
             <UserPlus className="w-5 h-5 text-brand-gold" /> Novo Cliente
-          </button>
+          </motion.button>
         </div>
       </header>
 
@@ -254,6 +268,7 @@ export default function AreaCS({ role }) {
         </div>
 
         <div className="overflow-x-auto">
+          {loading ? <SkeletonRows rows={4} cols={5} /> : (<>
           <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-brand-cream dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 text-brand-bronze text-xs uppercase tracking-wider">
@@ -285,15 +300,16 @@ export default function AreaCS({ role }) {
                   }
                 }
 
-                const isCritical = cliente.criticidade === 'Crítico';
+                const atBusy = busy.has(`at-${cliente.id_datajuri}`);
+                const tentBusy = busy.has(`tent-${cliente.id_datajuri}`);
+                const delBusy = busy.has(`del-${cliente.id_datajuri}`);
 
                 return (
-                  <tr key={cliente.id_datajuri} className={`transition-colors ${isCritical ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-slate-50 dark:bg-[#0B192C]'}`}>
+                  <tr key={cliente.id_datajuri} className="transition-colors hover:bg-slate-50 dark:bg-[#0B192C]">
                     <td className="px-4 py-4 text-sm font-medium text-slate-500 dark:text-slate-400">{cliente.id_datajuri}</td>
                     <td className="px-4 py-4">
-                      <div className={`text-sm font-bold flex items-center gap-2 ${isCritical ? 'text-red-700' : 'text-brand-navy dark:text-white'}`}>
+                      <div className="text-sm font-bold flex items-center gap-2 text-brand-navy dark:text-white">
                         {cliente.first_name}
-                        {isCritical && <AlertOctagon className="w-3.5 h-3.5 text-red-500" />}
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">{cliente.uf}</div>
                     </td>
@@ -321,10 +337,10 @@ export default function AreaCS({ role }) {
                         <button onClick={() => handleDesfazer(cliente.id_datajuri)} disabled={cliente.contatos === 0} className={`p-1.5 rounded-lg border transition-colors ${cliente.contatos > 0 ? 'border-red-200 text-red-500 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30' : 'border-slate-100 text-slate-300 dark:border-slate-700 dark:text-slate-600 cursor-not-allowed'}`} title="Desfazer atendimento">
                           <X className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleAtendimento(cliente.id_datajuri)} disabled={isBlocked} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${isBlocked ? 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:border-slate-700 cursor-not-allowed' : 'bg-brand-cream dark:bg-slate-900/50 text-brand-navy dark:text-white border-brand-gold hover:bg-brand-gold hover:text-white shadow-sm hover:shadow'}`}>
-                          <MessageCircle className="w-4 h-4" />
+                        <motion.button whileTap={tap} onClick={() => handleAtendimento(cliente.id_datajuri)} disabled={isBlocked || atBusy} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${isBlocked || atBusy ? 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:border-slate-700 cursor-not-allowed' : 'bg-brand-cream dark:bg-slate-900/50 text-brand-navy dark:text-white border-brand-gold hover:bg-brand-gold hover:text-white shadow-sm hover:shadow'}`}>
+                          {atBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
                           {cliente.contatos > 0 ? `Atendido (${cliente.contatos})` : 'Atender'}
-                        </button>
+                        </motion.button>
                       </div>
                       {isBlocked && (
                         <p className={`text-[10px] font-bold mt-1 flex items-center justify-center gap-1 ${cliente.contatos >= 6 ? 'text-slate-400' : 'text-amber-600'}`}>
@@ -343,20 +359,20 @@ export default function AreaCS({ role }) {
                         >
                           <X className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleTentativa(cliente.id_datajuri)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 hover:text-slate-800 transition-all shadow-sm" title="Marcar tentativa sem retorno">
-                          <PhoneForwarded className="w-4 h-4 text-orange-500" />
+                        <motion.button whileTap={tap} onClick={() => handleTentativa(cliente.id_datajuri)} disabled={tentBusy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 hover:text-slate-800 transition-all shadow-sm disabled:opacity-60" title="Marcar tentativa sem retorno">
+                          {tentBusy ? <Loader2 className="w-4 h-4 animate-spin text-orange-500" /> : <PhoneForwarded className="w-4 h-4 text-orange-500" />}
                           {cliente.tentativas > 0 ? `+${cliente.tentativas}` : 'Tentativa'}
-                        </button>
+                        </motion.button>
                       </div>
                     </td>
                     <td className="px-4 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => setModalQuitar(cliente)} className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-500 hover:text-white border border-emerald-200 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm transition-all">
+                        <motion.button whileTap={tap} onClick={() => setModalQuitar(cliente)} className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-500 hover:text-white border border-emerald-200 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm transition-all">
                           <CheckCircle className="w-4 h-4" /> Quitar
-                        </button>
-                        <button onClick={() => handleExcluir(cliente.id_datajuri)} className="p-1.5 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 rounded-lg shadow-sm transition-all" title="Excluir Cliente">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        </motion.button>
+                        <motion.button whileTap={tap} onClick={() => handleExcluir(cliente.id_datajuri)} disabled={delBusy} className="p-1.5 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 rounded-lg shadow-sm transition-all disabled:opacity-60" title="Excluir Cliente">
+                          {delBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </motion.button>
                       </div>
                     </td>
                   </tr>
@@ -370,6 +386,7 @@ export default function AreaCS({ role }) {
               <p>Nenhum cliente na sua base. Importe sua planilha do DataJuri.</p>
             </div>
           )}
+          </>)}
         </div>
       </div>
 
@@ -421,7 +438,7 @@ export default function AreaCS({ role }) {
       )}
 
       {toast.show && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/80 dark:border-red-700 dark:text-red-200' : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/80 dark:border-emerald-700 dark:text-emerald-200'}`}>
+        <div className={`toast-in fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/80 dark:border-red-700 dark:text-red-200' : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/80 dark:border-emerald-700 dark:text-emerald-200'}`}>
           {toast.type === 'error' ? <AlertOctagon className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
           <span className="font-medium text-sm">{toast.message}</span>
         </div>

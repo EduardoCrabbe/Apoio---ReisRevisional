@@ -1,6 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { PlusCircle, Star, MessageSquare, Image as ImageIcon, Video, History, CheckCircle, AlertOctagon, UserPlus, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { PlusCircle, Star, MessageSquare, Image as ImageIcon, Video, History, CheckCircle, AlertOctagon, UserPlus, X, Trophy, PhoneCall } from 'lucide-react';
 import { api } from '../services/api';
+import { Money } from '../contexts/PrivacidadeContext';
+
+const fmtBonus = (v) => `R$ ${(Number(v) || 0).toFixed(2)}`;
+
+// Rótulo + ícone dos cards "Meu Mês". Inclui "Atendimento" (não é bônus manual,
+// vem do residual de ganhosTotais) além dos tipos de bônus do extrato.
+const CARD_META = {
+  Atendimento: { label: 'Atendimento', icon: PhoneCall },
+  Quitacao: { label: 'Quitação', icon: MessageSquare },
+  ComentarioGoogle: { label: 'Comentário Google', icon: Star },
+  FotoBoleto: { label: 'Foto com Boleto', icon: ImageIcon },
+  ReclameAqui: { label: 'Reclame Aqui', icon: Star },
+  VideoDepoimento: { label: 'Depoimento por Vídeo', icon: Video },
+};
 
 // Rótulos/ícones amigáveis para as ações da commission_table (a ação "Atendimento"
 // não é um bônus manual — fica de fora). VALORES vêm da API, nunca hardcoded.
@@ -25,6 +39,7 @@ export default function Bonus({ role, user }) {
 
   const [tabela, setTabela] = useState([]);
   const [extrato, setExtrato] = useState([]);
+  const [stats, setStats] = useState(null); // só CS: ganhosTotais do mês (p/ "Meu Mês")
   const [form, setForm] = useState({ customer_id: '', tipo: TIPO_PADRAO });
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
@@ -46,8 +61,14 @@ export default function Bonus({ role, user }) {
   const fetchExtrato = async () => {
     try { setExtrato(await api.get('/api/bonus/extrato')); } catch (e) { showToast(e.message, 'error'); }
   };
+  // ganhosTotais (atendimentos + bônus do mês) — mesma fonte do Dashboard.
+  const fetchStats = async () => {
+    if (isManager) return;
+    try { setStats(await api.get('/api/dashboard/stats')); } catch { /* silencioso */ }
+  };
 
   useEffect(() => { fetchTabela(); fetchExtrato(); }, []);
+  useEffect(() => { fetchStats(); }, [isManager]);
 
   // A gestão precisa da base inteira de clientes e da lista de CS para o override.
   useEffect(() => {
@@ -85,6 +106,43 @@ export default function Bonus({ role, user }) {
     return usaNivelAlto ? regra.valor_nivel_3_5 : regra.valor_nivel_1_2;
   };
 
+  // "Meu Mês" (só CS): resumo da produção do mês corrente (mês calendário UTC,
+  // mesmo critério do Dashboard). Bônus vêm do extrato (agrupados por tipo);
+  // Atendimento não está no extrato — derivamos pelo residual de ganhosTotais
+  // (atendimentos + bônus) menos a soma dos bônus do mês, e estimamos a quantidade
+  // pelo valor unitário da tabela. Total dos cards == ganhosTotais (consistência).
+  const resumoMes = useMemo(() => {
+    if (isManager) return null;
+    const agora = new Date();
+    const ano = agora.getUTCFullYear();
+    const mes = agora.getUTCMonth();
+    const noMes = extrato.filter((it) => {
+      const d = new Date(it.data);
+      return !Number.isNaN(d.getTime()) && d.getUTCFullYear() === ano && d.getUTCMonth() === mes;
+    });
+
+    const grupos = {};
+    let totalBonus = 0;
+    for (const it of noMes) {
+      const g = grupos[it.tipo] || { tipo: it.tipo, qtd: 0, total: 0 };
+      g.qtd += 1;
+      g.total += Number(it.valor) || 0;
+      grupos[it.tipo] = g;
+      totalBonus += Number(it.valor) || 0;
+    }
+    const cards = Object.values(grupos);
+
+    const ganhos = Number(stats?.ganhosTotais) || 0;
+    const totalAtend = Math.max(0, ganhos - totalBonus);
+    if (totalAtend > 0.005) {
+      const unit = valorDe('Atendimento');
+      const qtd = unit ? Math.round(totalAtend / unit) : null;
+      cards.unshift({ tipo: 'Atendimento', qtd, total: totalAtend });
+    }
+    return { cards, total: ganhos };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManager, extrato, stats, tabela]);
+
   // Tipos de bônus LANÇÁVEIS manualmente = ações da tabela com rótulo definido,
   // exceto "Atendimento" (não é bônus) e "Quitacao" (nasce só do fluxo de quitar()).
   const tiposBonus = tabela
@@ -98,6 +156,7 @@ export default function Bonus({ role, user }) {
       await api.post('/api/bonus', { customer_id: form.customer_id, tipo: form.tipo });
       setForm({ ...form, customer_id: '' });
       await fetchExtrato();
+      fetchStats(); // mantém o residual de Atendimento ("Meu Mês") consistente
       showToast('Bônus registrado!');
     } catch (err) {
       showToast(err.message, 'error');
@@ -128,6 +187,40 @@ export default function Bonus({ role, user }) {
         )}
       </header>
 
+      {/* "Meu Mês" — produção do CS no mês corrente (gestão não vê: usa Equipe). */}
+      {!isManager && resumoMes && resumoMes.cards.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-lg font-bold text-brand-navy dark:text-white flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-brand-gold" /> Meu Mês
+            </h3>
+            <div className="text-sm font-bold text-brand-bronze flex items-center gap-1">
+              Total: <Money value={resumoMes.total} format={fmtBonus} className="text-brand-gold" />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            {resumoMes.cards.map((c) => {
+              const meta = CARD_META[c.tipo] || { label: c.tipo, icon: Trophy };
+              const Icon = meta.icon;
+              return (
+                <div key={c.tipo} className="flex-1 min-w-[180px] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm p-4 flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-sm font-bold text-brand-navy dark:text-white">
+                    <Icon className="w-4 h-4 text-brand-bronze" />
+                    {meta.label}
+                  </div>
+                  <div className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                    {c.qtd != null ? `${c.qtd} ${c.qtd === 1 ? 'realizado' : 'realizados'}` : 'no mês'}
+                  </div>
+                  <div className="text-xl font-black text-brand-gold mt-1">
+                    <Money value={c.total} prefix="+ " format={fmtBonus} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {!isManager && (
           <div className="lg:col-span-1 space-y-6">
@@ -150,7 +243,7 @@ export default function Bonus({ role, user }) {
                           <input type="radio" name="tipoBonus" value={tipo.id} checked={form.tipo === tipo.id} onChange={() => setForm({ ...form, tipo: tipo.id })} className="hidden" />
                           <tipo.icon className={`w-4 h-4 flex-shrink-0 ${form.tipo === tipo.id ? 'text-brand-gold' : ''}`} />
                           <span className="text-sm font-medium flex-1">{tipo.label}</span>
-                          {valor != null && <span className="text-xs font-bold text-brand-gold">+ R$ {valor.toFixed(2)}</span>}
+                          {valor != null && <span className="text-xs font-bold text-brand-gold"><Money value={valor} prefix="+ " format={fmtBonus} /></span>}
                         </label>
                       );
                     })}
@@ -186,7 +279,7 @@ export default function Bonus({ role, user }) {
                       {isManager && <td className="px-6 py-4 text-sm text-brand-navy dark:text-slate-300">{item.cs}</td>}
                       <td className="px-6 py-4 text-sm font-bold text-brand-navy dark:text-white">{item.cliente || '—'}</td>
                       <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{META[item.tipo]?.label || item.tipo}</td>
-                      <td className="px-6 py-4 text-sm font-bold text-emerald-600 text-right">+ R$ {(item.valor || 0).toFixed(2)}</td>
+                      <td className="px-6 py-4 text-sm font-bold text-emerald-600 text-right"><Money value={item.valor} prefix="+ " format={fmtBonus} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -200,7 +293,7 @@ export default function Bonus({ role, user }) {
       </div>
 
       {toast.show && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+        <div className={`toast-in fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
           {toast.type === 'error' ? <AlertOctagon className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
           <span className="font-medium text-sm">{toast.message}</span>
         </div>

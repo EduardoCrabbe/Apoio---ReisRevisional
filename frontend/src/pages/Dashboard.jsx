@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   AlertTriangle, CheckCircle2, Calendar as CalendarIcon, Clock, AlertCircle,
-  RefreshCw, PhoneForwarded, DollarSign, PieChart, Trash2, ClipboardList,
+  RefreshCw, PhoneForwarded, DollarSign, PieChart, Trash2, ClipboardList, Eye, EyeOff, Loader2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { onDataChanged, notifyDataChanged } from '../services/refresh';
+import { useCountUp } from '../hooks/useCountUp';
+import { usePrivacidade } from '../contexts/PrivacidadeContext';
+import { SkeletonKpiCard, Skeleton } from '../components/Skeleton';
 
 const STATS_VAZIO = {
   totalAtivos: 0, atendidos: 0, tentativas: 0, naoAtendidos: 0,
@@ -16,12 +20,22 @@ const STATS_VAZIO = {
 export default function Dashboard({ role }) {
   const isManager = role === 'Gerente' || role === 'Supervisor';
   const location = useLocation();
+  const reduce = useReducedMotion();
+  const { masked, toggle: togglePrivacidade } = usePrivacidade();
 
   const [stats, setStats] = useState(STATS_VAZIO);
   const [tarefas, setTarefas] = useState([]);
   const [erro, setErro] = useState('');
+  const [loading, setLoading] = useState(true); // skeleton só na primeira carga
   const [csList, setCsList] = useState([]); // CS ativos (só gestão usa)
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [busy, setBusy] = useState(() => new Set()); // ações de tarefa em andamento
+
+  const withBusy = async (chave, fn) => {
+    if (busy.has(chave)) return;            // previne duplo clique
+    setBusy((p) => new Set(p).add(chave));
+    try { await fn(); } finally { setBusy((p) => { const n = new Set(p); n.delete(chave); return n; }); }
+  };
 
   const [novaTarefa, setNovaTarefa] = useState({
     setor: 'Atendimento', classificacao: 'REGULAR', prazo: '', detalhes: '', responsavel_id: '',
@@ -51,10 +65,12 @@ export default function Dashboard({ role }) {
   };
 
   // Refaz o fetch a cada visita da rota (item 1: total não fica preso no valor
-  // antigo após criar CS/clientes).
+  // antigo após criar CS/clientes). Skeleton só na 1ª carga.
   useEffect(() => {
-    fetchStats();
-    fetchTarefas();
+    (async () => {
+      await Promise.all([fetchStats(), fetchTarefas()]);
+      setLoading(false);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
@@ -108,14 +124,14 @@ export default function Dashboard({ role }) {
     }
   };
 
-  const adiarTarefa = async (id) => {
+  const adiarTarefa = (id) => withBusy(`adiar-${id}`, async () => {
     try {
       await api.post(`/api/tarefas/${id}/adiar`);
       fetchTarefas();
     } catch (err) {
       setErro(err.message);
     }
-  };
+  });
 
   const excluirTarefa = async (id) => {
     setTarefas((prev) => prev.filter((t) => t.id !== id));
@@ -144,6 +160,17 @@ export default function Dashboard({ role }) {
   const stop1 = totalChart > 0 ? (stats.atendidos / totalChart) * 100 : 0;
   const stop2 = stop1 + (totalChart > 0 ? (stats.tentativas / totalChart) * 100 : 0);
 
+  // Contadores animados (0 → valor) ao chegarem os dados; respeitam reduced-motion.
+  const cuNao = Math.round(useCountUp(stats.naoAtendidos, 800));
+  const cuTent = Math.round(useCountUp(stats.tentativas, 800));
+  const cuAtend = Math.round(useCountUp(stats.atendidos, 800));
+  const cuGanhos = useCountUp(stats.ganhosTotais, 800);
+
+  // Radar: entrada em stagger (50ms). Gated por reduced-motion no <motion.div>.
+  const radarContainer = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
+  const radarItem = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } };
+  const tap = reduce ? undefined : { scale: 0.97 };
+
   return (
     <div className="space-y-8 pb-12">
       <header className="flex justify-between items-center">
@@ -151,10 +178,10 @@ export default function Dashboard({ role }) {
           <h2 className="text-3xl font-bold text-brand-navy dark:text-white">Painel de Controle</h2>
           <p className="text-brand-bronze mt-1">Visão geral do comissionamento e saúde dos atendimentos.</p>
         </div>
-        <button onClick={() => { fetchStats(); fetchTarefas(); }} className="flex items-center gap-2 bg-white dark:bg-[#112240] border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-600 dark:text-slate-300 px-4 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-colors">
+        <motion.button whileTap={tap} onClick={() => { fetchStats(); fetchTarefas(); }} className="flex items-center gap-2 bg-white dark:bg-[#112240] border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-600 dark:text-slate-300 px-4 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-colors">
           <RefreshCw className="w-4 h-4" />
           Atualizar Dados
-        </button>
+        </motion.button>
       </header>
 
       {erro && (
@@ -164,6 +191,11 @@ export default function Dashboard({ role }) {
       )}
 
       {/* KPI Cards */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonKpiCard key={i} />)}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white dark:bg-[#112240] p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-4">
@@ -171,7 +203,7 @@ export default function Dashboard({ role }) {
             <AlertCircle className="w-5 h-5 text-red-400 bg-red-50 dark:bg-red-900/30 p-1 rounded-md" />
           </div>
           <div>
-            <div className="text-4xl font-black text-red-500">{stats.naoAtendidos}</div>
+            <div className="text-4xl font-black text-red-500">{cuNao}</div>
             <div className="text-xs font-medium text-slate-400 dark:text-slate-500 mt-2">{pct.naoAtendidos}% da base {isManager ? 'geral' : ''}</div>
           </div>
         </div>
@@ -182,7 +214,7 @@ export default function Dashboard({ role }) {
             <PhoneForwarded className="w-5 h-5 text-orange-400 bg-orange-50 dark:bg-orange-900/30 p-1 rounded-md" />
           </div>
           <div>
-            <div className="text-4xl font-black text-orange-500">{stats.tentativas}</div>
+            <div className="text-4xl font-black text-orange-500">{cuTent}</div>
             <div className="text-xs font-medium text-slate-400 dark:text-slate-500 mt-2">Esforço não comissionado</div>
           </div>
         </div>
@@ -193,7 +225,7 @@ export default function Dashboard({ role }) {
             <CheckCircle2 className="w-5 h-5 text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 p-1 rounded-md" />
           </div>
           <div>
-            <div className="text-4xl font-black text-emerald-500">{stats.atendidos}</div>
+            <div className="text-4xl font-black text-emerald-500">{cuAtend}</div>
             <div className="text-xs font-medium text-slate-400 dark:text-slate-500 mt-2">{pct.atendidos}% da base {isManager ? 'geral' : ''}</div>
           </div>
         </div>
@@ -201,14 +233,31 @@ export default function Dashboard({ role }) {
         <div className="bg-brand-navy dark:bg-slate-900 p-6 rounded-2xl shadow-lg border border-brand-navy/10 dark:border-slate-800 flex flex-col justify-between transform hover:scale-[1.02] transition-transform text-white">
           <div className="flex justify-between items-start mb-4">
             <h3 className="text-sm font-bold text-blue-200">{isManager ? 'Ganhos da Equipe (mês)' : 'Ganhos Estimados (mês)'}</h3>
-            <div className="p-2 rounded-lg bg-white/10 text-brand-gold"><DollarSign className="w-5 h-5" /></div>
+            <div className="flex items-center gap-1">
+              <motion.button
+                type="button"
+                onClick={togglePrivacidade}
+                whileTap={tap}
+                title={masked ? 'Mostrar valores' : 'Ocultar valores (modo privacidade)'}
+                aria-label={masked ? 'Mostrar valores' : 'Ocultar valores'}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
+              >
+                {masked ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </motion.button>
+              <div className="p-2 rounded-lg bg-white/10 text-brand-gold"><DollarSign className="w-5 h-5" /></div>
+            </div>
           </div>
           <div>
-            <p className="text-4xl font-black text-brand-gold">{formatCurrency(stats.ganhosTotais)}</p>
+            <p className="text-4xl font-black text-brand-gold">
+              {masked
+                ? <span key="m" className="money-fade">R$ ••••</span>
+                : <span key="v" className="money-fade">{formatCurrency(cuGanhos)}</span>}
+            </p>
             <p className="text-xs text-blue-300 font-medium mt-1">Atendimentos + bônus do mês corrente</p>
           </div>
         </div>
       </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Radar de Prioridades */}
@@ -219,13 +268,22 @@ export default function Dashboard({ role }) {
           </h3>
           <p className="text-sm text-slate-500 dark:text-slate-400">Clientes em atraso e tarefas críticas da gestão.</p>
 
-          <div className="space-y-3">
-            {(!stats.prioridades || stats.prioridades.length === 0) ? (
-              <div className="bg-white/50 dark:bg-[#112240]/50 border border-slate-100 dark:border-slate-800 rounded-xl p-8 text-center text-slate-400 dark:text-slate-500 border-dashed">
-                Nenhuma prioridade na sua base.
-              </div>
-            ) : (
-              stats.prioridades.map((item) => {
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[68px] w-full rounded-xl" />)}
+            </div>
+          ) : (!stats.prioridades || stats.prioridades.length === 0) ? (
+            <div className="bg-white/50 dark:bg-[#112240]/50 border border-slate-100 dark:border-slate-800 rounded-xl p-8 text-center text-slate-400 dark:text-slate-500 border-dashed">
+              Nenhuma prioridade na sua base.
+            </div>
+          ) : (
+            <motion.div
+              className="space-y-3"
+              variants={radarContainer}
+              initial={reduce ? false : 'hidden'}
+              animate="show"
+            >
+              {stats.prioridades.map((item) => {
                 const isTarefa = item.tipo === 'tarefa';
                 const atrasado = item.status === 'Atrasado' || item.horas_restantes === null;
                 let statusText;
@@ -242,7 +300,7 @@ export default function Dashboard({ role }) {
                 const key = isTarefa ? `t-${item.tarefa_id}` : `c-${item.customer_id}`;
 
                 return (
-                  <div key={key} className={`bg-white dark:bg-[#112240] p-4 rounded-xl shadow-sm border-l-4 ${borderColor} border-t border-r border-b border-slate-100 dark:border-slate-800 flex justify-between items-center`}>
+                  <motion.div key={key} variants={radarItem} className={`bg-white dark:bg-[#112240] p-4 rounded-xl shadow-sm border-l-4 ${borderColor} border-t border-r border-b border-slate-100 dark:border-slate-800 flex justify-between items-center ${atrasado ? 'pulse-soft' : ''}`}>
                     <div>
                       <h4 className="font-bold text-brand-navy dark:text-white flex items-center gap-1.5">
                         {isTarefa && <ClipboardList className="w-4 h-4 text-indigo-500" />}
@@ -260,11 +318,11 @@ export default function Dashboard({ role }) {
                       <div className={`text-sm font-black ${statusColor}`}>{statusText}</div>
                       <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold">{atrasado ? 'Prazo esgotado' : 'No prazo'}</div>
                     </div>
-                  </div>
+                  </motion.div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </motion.div>
+          )}
         </div>
 
         {/* Gráfico de Desempenho */}
@@ -361,9 +419,9 @@ export default function Dashboard({ role }) {
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Detalhes</label>
                 <textarea rows="3" value={novaTarefa.detalhes} onChange={e => setNovaTarefa({ ...novaTarefa, detalhes: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-sm text-brand-navy dark:text-slate-200 focus:outline-none focus:border-brand-gold" required></textarea>
               </div>
-              <button type="submit" className="w-full bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy font-bold py-3 rounded-xl hover:bg-[#002866] dark:hover:bg-yellow-500 transition-colors">
+              <motion.button whileTap={tap} type="submit" className="w-full bg-brand-navy dark:bg-brand-gold text-white dark:text-brand-navy font-bold py-3 rounded-xl hover:bg-[#002866] dark:hover:bg-yellow-500 transition-colors">
                 Adicionar Tarefa
-              </button>
+              </motion.button>
             </form>
 
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
@@ -385,7 +443,7 @@ export default function Dashboard({ role }) {
                       {tarefa.prazo && <p className="text-[10px] text-slate-400 mt-1">Prazo: {tarefa.prazo}</p>}
                     </div>
                     <div className="flex flex-col gap-1">
-                      <button onClick={() => adiarTarefa(tarefa.id)} title="Adiar para hoje" className="text-slate-400 hover:text-amber-500 transition-colors"><Clock className="w-4 h-4" /></button>
+                      <button onClick={() => adiarTarefa(tarefa.id)} disabled={busy.has(`adiar-${tarefa.id}`)} title="Adiar para hoje" className="text-slate-400 hover:text-amber-500 transition-colors disabled:opacity-50">{busy.has(`adiar-${tarefa.id}`) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}</button>
                       <button onClick={() => excluirTarefa(tarefa.id)} title="Excluir" className="text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
@@ -397,7 +455,7 @@ export default function Dashboard({ role }) {
       </div>
 
       {toast.show && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+        <div className={`toast-in fixed bottom-6 right-6 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border z-50 ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
           {toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
           <span className="font-medium text-sm">{toast.message}</span>
         </div>
